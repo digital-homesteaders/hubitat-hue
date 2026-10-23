@@ -1,0 +1,7 @@
+.DS_Store
+.tools
+.tools/
+tests/build/
+
+# Private, kept local
+CLAUDE.md

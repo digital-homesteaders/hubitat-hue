@@ -1,0 +1,508 @@
+/**
+ * Hue Connect
+ *
+ * Philips Hue for Hubitat, written from Hue's CLIP v2 documentation: local only,
+ * V2 and HTTPS only, the event stream as the source of truth. This app finds and
+ * links the bridge, lets you pick devices, holds all Hue <-> Hubitat mapping as
+ * pure functions, and routes events and commands. The Hue Bridge device keeps the
+ * event stream and paces commands. Design: docs/SPEC.md.
+ *
+ * Copyright (c) 2026 Digital Homesteaders. MIT licence:
+ * https://github.com/digital-homesteaders/hubitat-hue/blob/main/LICENSE
+ */
+
+import groovy.transform.Field
+
+@Field static final String VERSION = "0.1.0"
+
+// Resource types fetched in one typed request (GET /clip/v2/resource?type=...)
+@Field static final List RESOURCE_TYPES = ["device", "light", "zigbee_connectivity"]
+// Link: Hue's devicetype is "<app>#<device>", at most 20 and 19 characters
+@Field static final String APP_NAME = "hue_connect"
+@Field static final int LINK_WINDOW_MS = 35000
+// discovery.meethue.com allows one request per 15 minutes per client
+@Field static final long CLOUD_DISCOVERY_MIN_MS = 15 * 60 * 1000L
+@Field static final String DRIVER_BRIDGE = "Hue Bridge"
+@Field static final Map LIGHT_DRIVERS = [color: "Hue Color Light", ct: "Hue White Ambiance Light", dim: "Hue White Light", onoff: "Hue Plug"]
+
+// Colour gamuts (Hue docs, "Color Conversion Formulas"; C's red per the API reference)
+@Field static final Map GAMUTS = [
+    A: [red: [0.704d, 0.296d], green: [0.2151d, 0.7106d], blue: [0.138d, 0.08d]],
+    B: [red: [0.675d, 0.322d], green: [0.409d, 0.518d], blue: [0.167d, 0.04d]],
+    C: [red: [0.6915d, 0.3083d], green: [0.17d, 0.7d], blue: [0.1532d, 0.0475d]],
+    other: [red: [1.0d, 0.0d], green: [0.0d, 1.0d], blue: [0.0d, 0.0d]],
+]
+
+definition(
+    name: "Hue Connect",
+    namespace: "hue",
+    author: "Digital Homesteaders",
+    description: "Philips Hue lights, groups, scenes and sensors over the local Hue API (V2), with live updates.",
+    category: "Convenience",
+    singleInstance: false,
+    installOnOpen: true,
+    iconUrl: "",
+    iconX2Url: "",
+    importUrl: "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/apps/hue-connect.groovy"
+)
+
+preferences {
+    page(name: "mainPage")
+}
+
+// ---------------------------------------------------------------- pages
+
+def mainPage() {
+    handlePendingButton()
+    boolean linked = bridgeKey() && state.bridge
+    dynamicPage(name: "mainPage", title: "Hue Connect", install: linked, uninstall: true, refreshInterval: state.linkUntil ? 3 : 0) {
+        if (!linked) {
+            section("1. Find your Hue Bridge") {
+                Map found = (state.found ?: [:]) as Map
+                if (found) {
+                    input "bridgeId", "enum", title: "Bridge", required: false, submitOnChange: true,
+                        options: found.collectEntries { id, b -> [(id): "${b.name} (${b.ip})"] }
+                } else {
+                    paragraph "No bridges found yet. Press Search, or enter the bridge's IP address below."
+                }
+                input "manualIp", "text", title: "Bridge IP address (optional)", required: false
+                input "btnSearch", "button", title: "Search"
+            }
+            if (settings.bridgeId) {
+                section("2. Link") {
+                    if (state.linkUntil) paragraph "<b>Press the round button on top of the bridge now.</b> Waiting..."
+                    else paragraph "Press <b>Link</b>, then the round button on top of the bridge within 30 seconds."
+                    if (state.linkError) paragraph "<span style='color:#b00'>${state.linkError}</span>"
+                    input "btnLink", "button", title: "Link"
+                }
+            }
+        } else {
+            section("Bridge") {
+                def b = bridgeDevice()
+                paragraph "${state.bridge.name} (${state.bridge.ip}): ${b?.currentValue('status') ?: 'starting'}"
+            }
+            section("Lights") {
+                Map lights = (state.lights ?: [:]) as Map
+                if (lights) {
+                    input "selectedLights", "enum", title: "Lights to add", multiple: true, required: false,
+                        options: lights.collectEntries { rid, l -> [(rid): l.name] }.sort { it.value }
+                } else {
+                    paragraph "Reading the bridge's lights..."
+                }
+            }
+            section("Options") {
+                input "logEnable", "bool", title: "Debug logging", defaultValue: false
+            }
+        }
+    }
+}
+
+void appButtonHandler(String btn) { state.pendingButton = btn }   // acted on in mainPage, after typed values are saved
+
+private void handlePendingButton() {
+    String btn = state.remove("pendingButton")
+    if (btn == "btnSearch") discover()
+    else if (btn == "btnLink") startLink()
+}
+
+// ---------------------------------------------------------------- lifecycle
+
+void installed() { updated() }
+
+void updated() {
+    if (!bridgeKey() || !state.bridge) return
+    def b = bridgeDevice()
+    boolean isNew = !b
+    if (isNew) {   // its installed() starts it
+        b = addChildDevice("hue", DRIVER_BRIDGE, bridgeDni(), [name: DRIVER_BRIDGE, label: "Hue Bridge (${state.bridge.name})", isComponent: false])
+    }
+    syncLights()
+    if (!isNew) b.initialize()
+}
+
+void uninstalled() {
+    getChildDevices().each { deleteChildDevice(it.deviceNetworkId) }
+}
+
+// ---------------------------------------------------------------- discovery
+
+/** mDNS from the hub's cache, discovery.meethue.com (at most every 15 min) and the manual IP; each answer is checked. */
+void discover() {
+    state.found = (state.found ?: [:])
+    hubitat.helper.NetworkUtils.getRawMDNSEndpointsByMACForServiceType("_hue._tcp.local.")?.each { k, v ->
+        if (v?.ip4Address) checkCandidate(v.ip4Address as String)
+    }
+    if (now() - ((state.lastCloudDiscovery ?: 0L) as long) >= CLOUD_DISCOVERY_MIN_MS) {
+        state.lastCloudDiscovery = now()
+        asynchttpGet("cloudDiscoveryDone", [uri: "https://discovery.meethue.com", contentType: "application/json", timeout: 10])
+    }
+    if (settings.manualIp) checkCandidate((settings.manualIp as String).trim())
+}
+
+void cloudDiscoveryDone(resp, Map data) {
+    if (resp.status != 200 || !(resp.json instanceof List)) return
+    resp.json.each { if (it.internalipaddress) checkCandidate(it.internalipaddress as String) }
+}
+
+/** GET https://<ip>/api/0/config needs no key and gives the bridge's full ID. */
+private void checkCandidate(String ip) {
+    if (!(ip ==~ /\d{1,3}(\.\d{1,3}){3}/)) return
+    asynchttpGet("configDone", [uri: "https://${ip}", path: "/api/0/config", contentType: "application/json", timeout: 10, ignoreSSLIssues: true], [ip: ip])
+}
+
+void configDone(resp, Map data) {
+    if (resp.status != 200 || !(resp.json instanceof Map)) return
+    Map b = bridgeFromConfig(resp.json as Map, data.ip as String)
+    if (b) {
+        Map found = (state.found ?: [:]) as Map
+        found[b.id] = b
+        state.found = found
+    }
+}
+
+/** A V2-capable bridge from /api/0/config, or null (the round V1 bridge, BSB001, has no V2). */
+static Map bridgeFromConfig(Map c, String ip) {
+    String id = (c.bridgeid as String)?.toLowerCase()
+    if (!(id ==~ /[0-9a-f]{16}/) || c.modelid == "BSB001") return null
+    return [id: id, ip: ip, name: (c.name ?: "Hue Bridge") as String, model: c.modelid as String]
+}
+
+// ---------------------------------------------------------------- linking
+
+private void startLink() {
+    state.remove("linkError")
+    if (!settings.bridgeId || !state.found?.get(settings.bridgeId)) return
+    state.linkUntil = now() + LINK_WINDOW_MS
+    sendLink()
+}
+
+void sendLink() {
+    Map b = state.found?.get(settings.bridgeId) as Map
+    if (!b) return
+    asynchttpPost("linkDone", [uri: "https://${b.ip}", path: "/api", contentType: "application/json",
+                               requestContentType: "application/json", body: [devicetype: deviceType()],
+                               timeout: 10, ignoreSSLIssues: true], [id: b.id])
+}
+
+/** "hue_connect#<hub name>", within Hue's 20 + 19 character limits. */
+String deviceType() {
+    String hub = ((location?.hub?.name ?: "hubitat") as String).replaceAll(/[^A-Za-z0-9 _-]/, "")
+    return "${APP_NAME}#${hub.take(19)}"
+}
+
+void linkDone(resp, Map data) {
+    def r = (resp.json instanceof List && resp.json) ? resp.json[0] : null
+    String key = r?.success?.username
+    if (key) {
+        app.updateSetting("bridgeKey", [type: "password", value: key])
+        Map b = state.found[data.id] as Map
+        state.bridge = [id: b.id, ip: b.ip, name: b.name]
+        state.remove("linkUntil")
+        log.info "Hue Connect: linked to ${b.name}"
+        refreshAll()
+    } else if (r?.error?.type == 101 && now() < ((state.linkUntil ?: 0L) as long)) {
+        runIn(2, "sendLink")   // the button hasn't been pressed yet
+    } else {
+        state.remove("linkUntil")
+        state.linkError = r?.error?.type == 101 ? "The bridge's button wasn't pressed in time. Press Link and try again." :
+            "The bridge didn't link (${r?.error?.description ?: 'HTTP ' + resp.status})."
+    }
+}
+
+// ---------------------------------------------------------------- the bridge connection (called by the Hue Bridge device)
+
+private String bridgeKey() { settings.bridgeKey as String }
+
+/** What the Hue Bridge device needs to reach the bridge. */
+Map bridgeConnection() { state.bridge ? [ip: state.bridge.ip, id: state.bridge.id, key: bridgeKey()] : null }
+
+/** One typed request for everything Hue Connect uses (startup, after long stream gaps, add/delete events). */
+void refreshAll() {
+    Map c = bridgeConnection()
+    if (!c?.key) return
+    asynchttpGet("refreshAllDone", [uri: "https://${c.ip}", path: "/clip/v2/resource", query: [type: RESOURCE_TYPES.join(",")],
+                                    headers: ["hue-application-key": c.key], contentType: "application/json", timeout: 20, ignoreSSLIssues: true])
+}
+
+void refreshAllDone(resp, Map data) {
+    if (resp.status != 200 || !(resp.json?.data instanceof List)) {
+        log.warn "Hue Connect: couldn't read the bridge's devices (HTTP ${resp.status})"
+        return
+    }
+    applyResources(resp.json.data as List)
+}
+
+/** A full resource list: rebuild what Hue Connect knows, then bring every device up to date. */
+void applyResources(List items) {
+    Map devices = items.findAll { it.type == "device" }.collectEntries { [(it.id): it] }
+    Map lights = [:], connectivity = [:]
+    items.findAll { it.type == "light" }.each { l -> lights[l.id] = lightInfo(l as Map, devices[l.owner?.rid] as Map) }
+    items.findAll { it.type == "zigbee_connectivity" }.each { z -> connectivity[z.id] = z.owner?.rid }
+    state.lights = lights
+    state.connectivity = connectivity
+    hueEvents("update", items)
+}
+
+/** What doesn't change about a light: name, kind (which driver), colour gamut and CT range. */
+static Map lightInfo(Map l, Map device) {
+    String kind = l.color ? "color" : l.color_temperature ? "ct" : l.dimming ? "dim" : "onoff"
+    Map info = [name: (l.metadata?.name ?: device?.metadata?.name ?: "Hue light") as String, kind: kind, device: l.owner?.rid,
+                model: device?.product_data?.model_id]
+    if (l.color) info.gamut = gamutFor(l.color as Map)
+    Map schema = l.color_temperature?.mirek_schema as Map
+    if (schema) { info.mirekMin = schema.mirek_minimum; info.mirekMax = schema.mirek_maximum }
+    return info
+}
+
+/** The light's own gamut; if missing, the corners for its gamut_type (Hue: "some bulbs do not properly return the Gamut"). */
+static Map gamutFor(Map color) {
+    Map g = color.gamut as Map
+    if (g?.red && g?.green && g?.blue) {
+        return [red: [g.red.x as double, g.red.y as double], green: [g.green.x as double, g.green.y as double], blue: [g.blue.x as double, g.blue.y as double]]
+    }
+    return (GAMUTS[color.gamut_type] ?: GAMUTS.other) as Map
+}
+
+// ---------------------------------------------------------------- devices
+
+private String bridgeDni() { "hue-${state.bridge.id}" }
+String dni(String rid) { "hue-${state.bridge.id}-${rid}" }
+private def bridgeDevice() { getChildDevice(bridgeDni()) }
+
+private void syncLights() {
+    Map lights = (state.lights ?: [:]) as Map
+    List wanted = (settings.selectedLights ?: []) as List
+    wanted.each { String rid ->
+        Map l = lights[rid] as Map
+        if (l && !getChildDevice(dni(rid))) {
+            addChildDevice("hue", LIGHT_DRIVERS[l.kind], dni(rid), [name: LIGHT_DRIVERS[l.kind], label: l.name, isComponent: false])
+        }
+    }
+    String prefix = "hue-${state.bridge.id}-"
+    getChildDevices().findAll { it.deviceNetworkId.startsWith(prefix) && !(it.deviceNetworkId - prefix in wanted) }.each {
+        deleteChildDevice(it.deviceNetworkId)
+    }
+}
+
+// ---------------------------------------------------------------- events from the bridge
+
+/** Called by the Hue Bridge device for each event container: type update | add | delete. */
+void hueEvents(String type, List items) {
+    if (type == "add" || type == "delete") {
+        runIn(2, "refreshAll")   // the device list changed; one typed GET picks it up
+        return
+    }
+    String scale = location?.temperatureScale ?: "F"
+    items.each { Map item ->
+        switch (item.type) {
+            case "light":
+                def d = getChildDevice(dni(item.id as String))
+                if (d) d.parse(lightEvents(item, (state.lights?.get(item.id) ?: [:]) as Map))
+                break
+            case "zigbee_connectivity":
+                String devRid = (state.connectivity?.get(item.id) ?: item.owner?.rid) as String
+                List ev = connectivityEvents(item)
+                if (ev) lightsOfDevice(devRid).each { getChildDevice(dni(it))?.parse(ev) }
+                break
+        }
+    }
+}
+
+private List lightsOfDevice(String deviceRid) {
+    ((state.lights ?: [:]) as Map).findAll { rid, l -> l.device == deviceRid }.collect { it.key as String }
+}
+
+/** Hubitat events from a light resource or update (an update carries only what changed). */
+static List lightEvents(Map item, Map info) {
+    List ev = []
+    if (item.on instanceof Map && item.on.on != null) ev << [name: "switch", value: item.on.on ? "on" : "off"]
+    if (item.dimming instanceof Map && item.dimming.brightness != null) ev << [name: "level", value: levelFromBrightness(item.dimming.brightness as double), unit: "%"]
+    boolean ctNow = false
+    if (item.color_temperature instanceof Map && item.color_temperature.containsKey("mirek")) {
+        def m = item.color_temperature.mirek
+        if (m != null && item.color_temperature.mirek_valid != false) {
+            ev << [name: "colorTemperature", value: kelvinFromMirek(m as int), unit: "K"]
+            ev << [name: "colorMode", value: "CT"]
+            ctNow = true
+        } else if (info.kind == "color") {
+            ev << [name: "colorMode", value: "RGB"]
+        }
+    }
+    if (!ctNow && info.kind == "color" && item.color?.xy?.x != null) {
+        List hs = xyToHueSat(item.color.xy.x as double, item.color.xy.y as double)
+        ev << [name: "hue", value: hs[0]]
+        ev << [name: "saturation", value: hs[1], unit: "%"]
+        if (!(item.color_temperature instanceof Map)) ev << [name: "colorMode", value: "RGB"]
+    }
+    return ev
+}
+
+/** healthStatus from zigbee_connectivity: online only when "connected" (Hue also reports connectivity_issue, disconnected, ...). */
+static List connectivityEvents(Map item) {
+    if (item.status == null) return []
+    return [[name: "healthStatus", value: item.status == "connected" ? "online" : "offline"]]
+}
+
+// ---------------------------------------------------------------- commands from devices
+
+/** A light driver's command (with its transition-time setting, in ms): build the PUT body and queue it on the Hue Bridge device. */
+void hueLightCommand(cd, String command, List args = [], Integer transitionMs = null) {
+    String rid = (cd.deviceNetworkId as String) - "hue-${state.bridge.id}-"
+    Map info = (state.lights?.get(rid) ?: [:]) as Map
+    Map current = [switch: cd.currentValue("switch"), hue: cd.currentValue("hue"), saturation: cd.currentValue("saturation"),
+                   level: cd.currentValue("level")]
+    Map body = lightCommand(command, args, info, current, transitionMs)
+    if (body == null) {
+        if (command == "refresh") refreshAll()
+        return
+    }
+    bridgeDevice()?.enqueue("light", rid, body)
+}
+
+/**
+ * The PUT body for a light command, or null if there's nothing to send. Only what changes is sent: one property is one
+ * Zigbee message (Hue performance guide), so `on` is added only for a light that isn't on (an off light ignores other
+ * properties), and no transition goes with `off` (it can reset brightness).
+ */
+static Map lightCommand(String command, List args, Map info, Map current, Integer transitionMs) {
+    Map body = [:]
+    boolean isOn = current.switch == "on"
+    switch (command) {
+        case "on": return [on: [on: true]]
+        case "off": return [on: [on: false]]
+        case "setLevel":
+            double level = (args[0] ?: 0) as double
+            if (level <= 0) return [on: [on: false]]
+            body.dimming = [brightness: brightnessFromLevel(level)]
+            withDuration(body, args.size() > 1 ? args[1] : null, transitionMs)
+            break
+        case "setColorTemperature":
+            body.color_temperature = [mirek: mirekFromKelvin(args[0] as int, info.mirekMin as Integer, info.mirekMax as Integer)]
+            if (args.size() > 1 && args[1] != null) body.dimming = [brightness: brightnessFromLevel(args[1] as double)]
+            withDuration(body, args.size() > 2 ? args[2] : null, transitionMs)
+            break
+        case "setColor":
+            Map c = args[0] as Map
+            body.color = [xy: xyMap(hueSatToXy((c.hue ?: 0) as double, (c.saturation ?: 0) as double, info.gamut as Map))]
+            if (c.level != null) body.dimming = [brightness: brightnessFromLevel(c.level as double)]
+            withDuration(body, null, transitionMs)
+            break
+        case "setHue":
+            body.color = [xy: xyMap(hueSatToXy(args[0] as double, (current.saturation ?: 100) as double, info.gamut as Map))]
+            withDuration(body, null, transitionMs)
+            break
+        case "setSaturation":
+            body.color = [xy: xyMap(hueSatToXy((current.hue ?: 0) as double, args[0] as double, info.gamut as Map))]
+            withDuration(body, null, transitionMs)
+            break
+        case "startLevelChange":
+            return [dimming_delta: [action: args[0] == "down" ? "down" : "up", brightness_delta: 100]]
+        case "stopLevelChange":
+            return [dimming_delta: [action: "stop"]]
+        default:
+            return null
+    }
+    if (!isOn) body.on = [on: true]
+    return body
+}
+
+private static void withDuration(Map body, def seconds, Integer defaultMs) {
+    Integer ms = seconds != null ? Math.round((seconds as double) * 1000) as Integer : defaultMs
+    if (ms != null && ms >= 0) body.dynamics = [duration: ms]
+}
+
+/** Called by the Hue Bridge device when a command went through while the event stream is down, so state still updates. */
+void assumeApplied(String rtype, String rid, Map body) {
+    if (rtype != "light") return
+    def d = getChildDevice(dni(rid))
+    if (d) d.parse(lightEvents(body, (state.lights?.get(rid) ?: [:]) as Map))
+}
+
+// ---------------------------------------------------------------- conversions (pure)
+
+static int levelFromBrightness(double b) { Math.max(1, Math.min(100, Math.round(b) as int)) }
+static double brightnessFromLevel(double level) { Math.max(0d, Math.min(100d, level)) }
+static int kelvinFromMirek(int mirek) { Math.round(1000000d / mirek) as int }
+
+/** Kelvin to mirek, inside the light's range (Hue's limits 153-500 when the light gives none). */
+static int mirekFromKelvin(int kelvin, Integer min, Integer max) {
+    int m = Math.round(1000000d / Math.max(1, kelvin)) as int
+    return Math.max(min ?: 153, Math.min(max ?: 500, m))
+}
+
+private static Map xyMap(List xy) { [x: Math.round(xy[0] * 10000) / 10000d, y: Math.round(xy[1] * 10000) / 10000d] }
+
+/** Hubitat hue (0-100) and saturation (0-100) to CIE xy, using Hue's RGB-to-xy formulas, kept inside the gamut. */
+static List hueSatToXy(double hue, double sat, Map gamut) {
+    List rgb = hsvToRgb(hue * 3.6d, sat / 100d)
+    List lin = rgb.collect { double c -> c > 0.04045d ? Math.pow((c + 0.055d) / 1.055d, 2.4d) : c / 12.92d }
+    double r = lin[0], g = lin[1], b = lin[2]
+    double X = r * 0.664511d + g * 0.154324d + b * 0.162028d
+    double Y = r * 0.283881d + g * 0.668433d + b * 0.047685d
+    double Z = r * 0.000088d + g * 0.072310d + b * 0.986039d
+    double sum = X + Y + Z
+    List xy = sum > 0 ? [X / sum, Y / sum] : [0.3227d, 0.329d]
+    return clampToGamut(xy[0] as double, xy[1] as double, (gamut ?: GAMUTS.C) as Map)
+}
+
+/** CIE xy to Hubitat hue (0-100) and saturation (0-100), with Hue's xy-to-RGB formulas (full brightness). */
+static List xyToHueSat(double x, double y) {
+    if (y <= 0) return [0, 0]
+    double Y = 1d, X = (Y / y) * x, Z = (Y / y) * (1d - x - y)
+    List lin = [X * 1.656492d - Y * 0.354851d - Z * 0.255038d,
+                -X * 0.707196d + Y * 1.655397d + Z * 0.036152d,
+                X * 0.051713d - Y * 0.121364d + Z * 1.011530d].collect { Math.max(0d, it as double) }
+    double peak = Math.max(lin[0] as double, Math.max(lin[1] as double, lin[2] as double))
+    if (peak <= 0) return [0, 0]
+    List rgb = lin.collect { double c ->
+        double v = c / peak
+        v <= 0.0031308d ? 12.92d * v : 1.055d * Math.pow(v, 1d / 2.4d) - 0.055d
+    }
+    double max = rgb.max() as double, min = rgb.min() as double, delta = max - min
+    double h = 0
+    if (delta > 0) {
+        if (max == rgb[0]) h = 60d * ((((rgb[1] as double) - (rgb[2] as double)) / delta) % 6d)
+        else if (max == rgb[1]) h = 60d * (((rgb[2] as double) - (rgb[0] as double)) / delta + 2d)
+        else h = 60d * (((rgb[0] as double) - (rgb[1] as double)) / delta + 4d)
+        if (h < 0) h += 360d
+    }
+    double s = max > 0 ? delta / max : 0
+    return [Math.round(h / 3.6d) as int, Math.round(s * 100) as int]
+}
+
+private static List hsvToRgb(double h, double s) {
+    double c = s, x = c * (1 - Math.abs(((h / 60d) % 2d) - 1)), m = 1 - c
+    List rgb
+    if (h < 60) rgb = [c, x, 0d] else if (h < 120) rgb = [x, c, 0d] else if (h < 180) rgb = [0d, c, x]
+    else if (h < 240) rgb = [0d, x, c] else if (h < 300) rgb = [x, 0d, c] else rgb = [c, 0d, x]
+    return rgb.collect { (it as double) + m }
+}
+
+/** Inside the triangle: unchanged. Outside: the closest point on its edges (Hue docs). */
+static List clampToGamut(double x, double y, Map g) {
+    List r = g.red as List, gr = g.green as List, b = g.blue as List
+    if (inTriangle(x, y, r, gr, b)) return [x, y]
+    List best = null
+    double bestD = Double.MAX_VALUE
+    [[r, gr], [gr, b], [b, r]].each { List e ->
+        List p = closestOnSegment(e[0] as List, e[1] as List, x, y)
+        double d = Math.pow((p[0] as double) - x, 2) + Math.pow((p[1] as double) - y, 2)
+        if (d < bestD) { bestD = d; best = p }
+    }
+    return best
+}
+
+private static boolean inTriangle(double x, double y, List r, List g, List b) {
+    double v1x = g[0] - r[0], v1y = g[1] - r[1], v2x = b[0] - r[0], v2y = b[1] - r[1], qx = x - r[0], qy = y - r[1]
+    double den = v1x * v2y - v1y * v2x
+    double s = (qx * v2y - qy * v2x) / den, t = (v1x * qy - v1y * qx) / den
+    double eps = 1e-9   // points placed exactly on an edge count as inside despite rounding
+    return s >= -eps && t >= -eps && s + t <= 1 + eps
+}
+
+private static List closestOnSegment(List a, List b, double x, double y) {
+    double abx = b[0] - a[0], aby = b[1] - a[1]
+    double t = ((x - a[0]) * abx + (y - a[1]) * aby) / (abx * abx + aby * aby)
+    t = Math.max(0d, Math.min(1d, t))
+    return [(a[0] as double) + abx * t, (a[1] as double) + aby * t]
+}

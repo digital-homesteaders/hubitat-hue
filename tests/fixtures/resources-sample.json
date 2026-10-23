@@ -1,0 +1,318 @@
+{
+ "errors": [],
+ "data": [
+  {
+   "id": "00000065-0000-4000-8000-000000000065",
+   "type": "light",
+   "owner": {
+    "rid": "00000001-0000-4000-8000-000000000001",
+    "rtype": "device"
+   },
+   "metadata": {
+    "name": "Living Lamp",
+    "archetype": "classic_bulb"
+   },
+   "on": {
+    "on": true
+   },
+   "dimming": {
+    "brightness": 80.0,
+    "min_dim_level": 0.2
+   },
+   "color_temperature": {
+    "mirek": null,
+    "mirek_valid": false,
+    "mirek_schema": {
+     "mirek_minimum": 153,
+     "mirek_maximum": 500
+    }
+   },
+   "color": {
+    "xy": {
+     "x": 0.6915,
+     "y": 0.3083
+    },
+    "gamut": {
+     "red": {
+      "x": 0.6915,
+      "y": 0.3083
+     },
+     "green": {
+      "x": 0.17,
+      "y": 0.7
+     },
+     "blue": {
+      "x": 0.1532,
+      "y": 0.0475
+     }
+    },
+    "gamut_type": "C"
+   },
+   "dynamics": {
+    "status": "none",
+    "speed": 0.0,
+    "speed_valid": false
+   },
+   "mode": "normal"
+  },
+  {
+   "id": "00000001-0000-4000-8000-000000000001",
+   "type": "device",
+   "metadata": {
+    "name": "Living Lamp",
+    "archetype": "classic_bulb"
+   },
+   "product_data": {
+    "model_id": "LCA001",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Hue color lamp",
+    "certified": true,
+    "software_version": "1.122.2"
+   },
+   "services": [
+    {
+     "rid": "00000065-0000-4000-8000-000000000065",
+     "rtype": "light"
+    },
+    {
+     "rid": "000000c9-0000-4000-8000-0000000000c9",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000000c9-0000-4000-8000-0000000000c9",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000001-0000-4000-8000-000000000001",
+    "rtype": "device"
+   },
+   "status": "connected",
+   "mac_address": "00:17:88:01:0b:00:00:c9"
+  },
+  {
+   "id": "00000066-0000-4000-8000-000000000066",
+   "type": "light",
+   "owner": {
+    "rid": "00000002-0000-4000-8000-000000000002",
+    "rtype": "device"
+   },
+   "metadata": {
+    "name": "Hall Ceiling"
+   },
+   "on": {
+    "on": false
+   },
+   "dimming": {
+    "brightness": 45.5
+   },
+   "color_temperature": {
+    "mirek": 366,
+    "mirek_valid": true,
+    "mirek_schema": {
+     "mirek_minimum": 153,
+     "mirek_maximum": 454
+    }
+   },
+   "mode": "normal"
+  },
+  {
+   "id": "00000002-0000-4000-8000-000000000002",
+   "type": "device",
+   "metadata": {
+    "name": "Hall Ceiling",
+    "archetype": "classic_bulb"
+   },
+   "product_data": {
+    "model_id": "LTA001",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Hue ambiance lamp",
+    "certified": true,
+    "software_version": "1.122.2"
+   },
+   "services": [
+    {
+     "rid": "00000066-0000-4000-8000-000000000066",
+     "rtype": "light"
+    },
+    {
+     "rid": "000000ca-0000-4000-8000-0000000000ca",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000000ca-0000-4000-8000-0000000000ca",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000002-0000-4000-8000-000000000002",
+    "rtype": "device"
+   },
+   "status": "connectivity_issue",
+   "mac_address": "00:17:88:01:0b:00:00:ca"
+  },
+  {
+   "id": "00000067-0000-4000-8000-000000000067",
+   "type": "light",
+   "owner": {
+    "rid": "00000003-0000-4000-8000-000000000003",
+    "rtype": "device"
+   },
+   "metadata": {
+    "name": "Porch"
+   },
+   "on": {
+    "on": true
+   },
+   "dimming": {
+    "brightness": 100.0
+   },
+   "mode": "normal"
+  },
+  {
+   "id": "00000003-0000-4000-8000-000000000003",
+   "type": "device",
+   "metadata": {
+    "name": "Porch",
+    "archetype": "classic_bulb"
+   },
+   "product_data": {
+    "model_id": "LWA001",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Hue white lamp",
+    "certified": true,
+    "software_version": "1.122.2"
+   },
+   "services": [
+    {
+     "rid": "00000067-0000-4000-8000-000000000067",
+     "rtype": "light"
+    },
+    {
+     "rid": "000000cb-0000-4000-8000-0000000000cb",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000000cb-0000-4000-8000-0000000000cb",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000003-0000-4000-8000-000000000003",
+    "rtype": "device"
+   },
+   "status": "connected",
+   "mac_address": "00:17:88:01:0b:00:00:cb"
+  },
+  {
+   "id": "00000068-0000-4000-8000-000000000068",
+   "type": "light",
+   "owner": {
+    "rid": "00000004-0000-4000-8000-000000000004",
+    "rtype": "device"
+   },
+   "metadata": {
+    "name": "Fountain Plug"
+   },
+   "on": {
+    "on": false
+   },
+   "mode": "normal"
+  },
+  {
+   "id": "00000004-0000-4000-8000-000000000004",
+   "type": "device",
+   "metadata": {
+    "name": "Fountain Plug",
+    "archetype": "classic_bulb"
+   },
+   "product_data": {
+    "model_id": "LOM001",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Hue Smart plug",
+    "certified": true,
+    "software_version": "1.122.2"
+   },
+   "services": [
+    {
+     "rid": "00000068-0000-4000-8000-000000000068",
+     "rtype": "light"
+    },
+    {
+     "rid": "000000cc-0000-4000-8000-0000000000cc",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000000cc-0000-4000-8000-0000000000cc",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000004-0000-4000-8000-000000000004",
+    "rtype": "device"
+   },
+   "status": "connected",
+   "mac_address": "00:17:88:01:0b:00:00:cc"
+  },
+  {
+   "id": "00000069-0000-4000-8000-000000000069",
+   "type": "light",
+   "owner": {
+    "rid": "00000005-0000-4000-8000-000000000005",
+    "rtype": "device"
+   },
+   "metadata": {
+    "name": "Old Bloom"
+   },
+   "on": {
+    "on": true
+   },
+   "dimming": {
+    "brightness": 50.0
+   },
+   "color": {
+    "xy": {
+     "x": 0.4,
+     "y": 0.4
+    },
+    "gamut_type": "B"
+   },
+   "mode": "normal"
+  },
+  {
+   "id": "00000005-0000-4000-8000-000000000005",
+   "type": "device",
+   "metadata": {
+    "name": "Old Bloom",
+    "archetype": "classic_bulb"
+   },
+   "product_data": {
+    "model_id": "LCT001",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Hue color lamp",
+    "certified": true,
+    "software_version": "1.122.2"
+   },
+   "services": [
+    {
+     "rid": "00000069-0000-4000-8000-000000000069",
+     "rtype": "light"
+    },
+    {
+     "rid": "000000cd-0000-4000-8000-0000000000cd",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000000cd-0000-4000-8000-0000000000cd",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000005-0000-4000-8000-000000000005",
+    "rtype": "device"
+   },
+   "status": "connected",
+   "mac_address": "00:17:88:01:0b:00:00:cd"
+  }
+ ]
+}

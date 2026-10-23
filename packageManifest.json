@@ -1,0 +1,58 @@
+{
+  "packageName": "Hue Connect",
+  "author": "Digital Homesteaders",
+  "version": "0.1.0",
+  "minimumHEVersion": "2.3.0",
+  "dateReleased": "2026-10-23",
+  "documentationLink": "https://github.com/digital-homesteaders/hubitat-hue#readme",
+  "licenseFile": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/LICENSE",
+  "releaseNotes": "First preview: lights over the local Hue V2 API with the event stream, paced commands and a bridge health check.",
+  "apps": [
+    {
+      "id": "faf517e0-0ec2-43a8-a862-dd3ca11ae3b6",
+      "name": "Hue Connect",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/apps/hue-connect.groovy",
+      "required": true,
+      "oauth": false,
+      "primary": true
+    }
+  ],
+  "drivers": [
+    {
+      "id": "c89c3e1d-fa9f-44e1-b3d3-9e48d11ee4ca",
+      "name": "Hue Bridge",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-bridge.groovy",
+      "required": true
+    },
+    {
+      "id": "54922f81-2a8e-4890-9aea-2871a2fd31da",
+      "name": "Hue Color Light",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-color-light.groovy",
+      "required": true
+    },
+    {
+      "id": "1fd9474d-7905-419b-8603-86b3ea976e97",
+      "name": "Hue White Ambiance Light",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-white-ambiance-light.groovy",
+      "required": true
+    },
+    {
+      "id": "20e59f63-8b2e-42c2-a6bb-7a589cc23a86",
+      "name": "Hue White Light",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-white-light.groovy",
+      "required": true
+    },
+    {
+      "id": "3a2bc88e-118c-454b-ab1b-53ab8593174a",
+      "name": "Hue Plug",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-plug.groovy",
+      "required": true
+    }
+  ]
+}

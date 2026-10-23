@@ -1,0 +1,19 @@
+Third-party notice
+
+Hue Connect is written from Signify's Philips Hue developer documentation (the
+CLIP API v2 reference and the Application Design Guidance). Philips Hue is a
+trademark of Signify; this project is not affiliated with or endorsed by
+Signify. The documentation itself is not included in this repository.
+
+Design ideas were learned from these projects; no code is copied from them:
+
+- aiohue (Home Assistant's Hue library), Apache License 2.0,
+  https://github.com/home-assistant-libs/aiohue : reconnecting the event
+  stream with Last-Event-ID, refetching only after a long gap, retrying 429
+  and 503 with a growing wait.
+- CoCoHue by Robert Morris, Apache License 2.0,
+  https://github.com/HubitatCommunity/CoCoHue : how a Hue integration fits
+  Hubitat (the hub's mDNS cache, the event stream interface).
+
+The RGB/xy colour conversion follows the formulas in Hue's "Color Conversion
+Formulas RGB to XY and back" design note.
