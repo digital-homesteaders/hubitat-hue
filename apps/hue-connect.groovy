@@ -17,7 +17,8 @@ import java.util.concurrent.ConcurrentHashMap
 @Field static final String VERSION = "0.1.0"
 
 // Resource types fetched in one typed request (GET /clip/v2/resource?type=...)
-@Field static final List RESOURCE_TYPES = ["device", "light", "zigbee_connectivity"]
+@Field static final List RESOURCE_TYPES = ["device", "light", "zigbee_connectivity", "room", "zone", "bridge_home", "grouped_light",
+                                          "scene", "smart_scene"]
 // Link: Hue's devicetype is "<app>#<device>", at most 20 and 19 characters
 @Field static final String APP_NAME = "hue_connect"
 @Field static final int LINK_WINDOW_MS = 35000
@@ -25,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap
 @Field static final long CLOUD_DISCOVERY_MIN_MS = 15 * 60 * 1000L
 @Field static final String DRIVER_BRIDGE = "Hue Bridge"
 @Field static final Map LIGHT_DRIVERS = [color: "Hue Color Light", ct: "Hue White Ambiance Light", dim: "Hue White Light", onoff: "Hue Plug"]
+@Field static final String DRIVER_GROUP = "Hue Group"
+@Field static final String DRIVER_SCENE = "Hue Scene"
 // A full 0-100% hold-to-dim ramp takes this long, so a release partway stops it partway
 @Field static final int LEVEL_CHANGE_MS = 4000
 // Hue and saturation just asked for, per light: until the bridge confirms, setHue then setSaturation must use the new
@@ -108,6 +111,20 @@ def mainPage() {
                     paragraph "Reading the bridge's lights..."
                 }
             }
+            section("Rooms and zones") {
+                Map groups = (state.groups ?: [:]) as Map
+                if (groups) {
+                    input "selectedGroups", "enum", title: "Groups to add (each controls its room or zone together, with its scenes as effects)",
+                        multiple: true, required: false, options: groups.collectEntries { rid, g -> [(rid): g.name] }.sort { it.value }
+                }
+            }
+            section("Scenes") {
+                Map scenes = (state.scenes ?: [:]) as Map
+                if (scenes) {
+                    input "selectedScenes", "enum", title: "Scenes to add (each is a button and a switch)", multiple: true, required: false,
+                        options: scenes.collectEntries { rid, sc -> [(rid): sceneLabel(sc as Map)] }.sort { it.value }
+                }
+            }
             section("Options") {
                 input "logEnable", "bool", title: "Debug logging", defaultValue: false
             }
@@ -140,7 +157,7 @@ void updated() {
     if (isNew) {   // its installed() starts it
         b = addChildDevice("hue", DRIVER_BRIDGE, bridgeDni(), [name: DRIVER_BRIDGE, label: "Hue Bridge (${state.bridge.name})", isComponent: false])
     }
-    if (syncLights()) refreshAll()   // new devices need their current state
+    if (syncDevices()) refreshAll()   // new devices need their current state
     if (!isNew) b.initialize()
 }
 
@@ -297,7 +314,38 @@ void applyResources(List items) {
     items.findAll { it.type == "zigbee_connectivity" }.each { z -> connectivity[z.id] = z.owner?.rid }
     state.lights = lights
     state.connectivity = connectivity
+    Map owners = items.findAll { it.type in ["room", "zone", "bridge_home"] }.collectEntries { [(it.id): it] }
+    Map groups = [:], groupOf = [:]
+    items.findAll { it.type == "grouped_light" }.each { g ->
+        Map owner = owners[g.owner?.rid] as Map
+        if (!owner) return
+        groups[g.id] = [name: owner.type == "bridge_home" ? "All Hue lights" : (owner.metadata?.name ?: "Hue group"), owner: owner.id, ownerType: owner.type]
+        groupOf[owner.id] = g.id
+    }
+    Map scenes = [:]
+    items.findAll { it.type in ["scene", "smart_scene"] }.each { sc ->
+        String roomRid = sc.group?.rid
+        scenes[sc.id] = [name: (sc.metadata?.name ?: "Scene") as String, smart: sc.type == "smart_scene", groupedLight: groupOf[roomRid],
+                         room: (owners[roomRid]?.metadata?.name ?: "") as String, dynamic: sc.palette?.color ? true : false]
+    }
+    state.groups = groups
+    state.scenes = scenes
+    groups.each { rid, g -> getChildDevice(dni(rid as String))?.parse(effectListEvents(rid as String, scenes)) }
     hueEvents("update", items)
+}
+
+static String sceneLabel(Map sc) { sc.room ? "${sc.name} (${sc.room})" : sc.name }
+
+/** A group's scenes as Hubitat light effects: the lightEffects map (number -> name), in name order. */
+static List groupEffects(String groupedLightRid, Map scenes) {
+    scenes.findAll { rid, sc -> sc.groupedLight == groupedLightRid }.collect { rid, sc -> [rid: rid, name: sc.name] }.sort { it.name }
+}
+
+static List effectListEvents(String groupedLightRid, Map scenes) {
+    List fx = groupEffects(groupedLightRid, scenes)
+    Map numbered = [:]
+    fx.eachWithIndex { e, i -> numbered[(i + 1) as String] = e.name }
+    return [[name: "lightEffects", value: groovy.json.JsonOutput.toJson(numbered)]]
 }
 
 /** What doesn't change about a light: name, kind (which driver), colour gamut and CT range. */
@@ -326,19 +374,22 @@ private String bridgeDni() { "hue-${state.bridge.id}" }
 String dni(String rid) { "hue-${state.bridge.id}-${rid}" }
 private def bridgeDevice() { getChildDevice(bridgeDni()) }
 
-/** Adds and removes light devices to match the selection; returns true if any were added. */
-private boolean syncLights() {
-    Map lights = (state.lights ?: [:]) as Map
-    List wanted = (settings.selectedLights ?: []) as List
+/** Adds and removes light, group and scene devices to match the selection; returns true if any were added. */
+private boolean syncDevices() {
+    Map lights = (state.lights ?: [:]) as Map, groups = (state.groups ?: [:]) as Map, scenes = (state.scenes ?: [:]) as Map
+    Map wanted = [:]   // rid -> [driver, label]
+    ((settings.selectedLights ?: []) as List).each { String rid -> if (lights[rid]) wanted[rid] = [LIGHT_DRIVERS[lights[rid].kind], lights[rid].name] }
+    ((settings.selectedGroups ?: []) as List).each { String rid -> if (groups[rid]) wanted[rid] = [DRIVER_GROUP, groups[rid].name] }
+    ((settings.selectedScenes ?: []) as List).each { String rid -> if (scenes[rid]) wanted[rid] = [DRIVER_SCENE, sceneLabel(scenes[rid] as Map)] }
     boolean added = false
-    wanted.each { String rid ->
-        Map l = lights[rid] as Map
-        if (l && !getChildDevice(dni(rid))) {
-            addChildDevice("hue", LIGHT_DRIVERS[l.kind], dni(rid), [name: LIGHT_DRIVERS[l.kind], label: l.name, isComponent: false])
+    wanted.each { String rid, List d ->
+        if (!getChildDevice(dni(rid))) {
+            def cd = addChildDevice("hue", d[0], dni(rid), [name: d[0], label: d[1], isComponent: false])
+            if (d[0] == DRIVER_GROUP) cd.parse(effectListEvents(rid, scenes))
             added = true
         }
     }
-    getChildDevices().findAll { ridOf(it.deviceNetworkId as String) && !(ridOf(it.deviceNetworkId as String) in wanted) }.each {
+    getChildDevices().findAll { ridOf(it.deviceNetworkId as String) && !wanted.containsKey(ridOf(it.deviceNetworkId as String)) }.each {
         deleteChildDevice(it.deviceNetworkId)
     }
     return added
@@ -363,6 +414,18 @@ void hueEvents(String type, List items) {
             case "light":
                 def d = getChildDevice(dni(item.id as String))
                 if (d) d.parse(lightEvents(item, (state.lights?.get(item.id) ?: [:]) as Map))
+                break
+            case "grouped_light":
+                getChildDevice(dni(item.id as String))?.parse(groupEvents(item))
+                break
+            case "scene":
+            case "smart_scene":
+                List ev = sceneEvents(item)
+                if (!ev) break
+                getChildDevice(dni(item.id as String))?.parse(ev)
+                Map sc = state.scenes?.get(item.id) as Map
+                def g = sc?.groupedLight ? getChildDevice(dni(sc.groupedLight as String)) : null
+                if (g) g.parse(effectNameEvents(sc.name as String, ev[0].value == "on", g.currentValue("effectName") as String))
                 break
             case "zigbee_connectivity":
                 String devRid = (state.connectivity?.get(item.id) ?: item.owner?.rid) as String
@@ -402,6 +465,29 @@ static List lightEvents(Map item, Map info) {
     return ev
 }
 
+/** A room's or zone's grouped_light: on = any light on; brightness = the average of the lights that are on. */
+static List groupEvents(Map item) {
+    List ev = []
+    if (item.on instanceof Map && item.on.on != null) ev << [name: "switch", value: item.on.on ? "on" : "off"]
+    if (item.dimming instanceof Map && item.dimming.brightness != null && item.on?.on != false) {
+        ev << [name: "level", value: levelFromBrightness(item.dimming.brightness as double), unit: "%"]
+    }
+    return ev
+}
+
+/** A scene (status.active: inactive | static | dynamic_palette) or smart scene (state: active | inactive) as a switch. */
+static List sceneEvents(Map item) {
+    def active = item.type == "smart_scene" ? item.state : item.status?.active
+    if (active == null) return []
+    return [[name: "switch", value: active in ["inactive"] ? "off" : "on"]]
+}
+
+/** The group's effectName follows its scenes: the one just recalled, or "none" when the one shown is no longer active. */
+static List effectNameEvents(String sceneName, boolean active, String shown) {
+    if (active) return [[name: "effectName", value: sceneName]]
+    return shown == sceneName ? [[name: "effectName", value: "none"]] : []
+}
+
 /** healthStatus from zigbee_connectivity: online only when "connected" (Hue also reports connectivity_issue, disconnected, ...). */
 static List connectivityEvents(Map item) {
     if (item.status == null) return []
@@ -437,6 +523,43 @@ static Map requestedHueSat(String command, List args, Map current) {
         case "setSaturation": return [hue: current.hue != null ? current.hue : 0, saturation: args[0]]
     }
     return null
+}
+
+/** A Hue Group's command. Group commands are Zigbee broadcasts (at most 1 a second), so `on` always goes with level,
+ * colour temperature and colour: in a partly-on room, the lights that are off would otherwise ignore them. */
+void hueGroupCommand(cd, String command, List args = [], Integer transitionMs = null) {
+    String rid = ridOf(cd.deviceNetworkId as String)
+    if (command in ["setEffect", "setNextEffect", "setPreviousEffect"]) {
+        List fx = groupEffects(rid, (state.scenes ?: [:]) as Map)
+        if (!fx) return
+        int count = fx.size()
+        int current = fx.findIndexOf { it.name == cd.currentValue("effectName") }
+        int index = command == "setEffect" ? ((args[0] ?: 1) as int) - 1 :
+            ((current < 0 ? (command == "setNextEffect" ? -1 : 0) : current) + (command == "setNextEffect" ? 1 : -1) + count) % count
+        if (index < 0 || index >= count) return
+        bridgeDevice()?.enqueue("scene", fx[index].rid as String, [recall: [action: "active"]])
+        return
+    }
+    Map body = lightCommand(command, args, [kind: "color", gamut: GAMUTS.other, mirekMin: 153, mirekMax: 500], [switch: "off"], transitionMs)
+    if (body == null) {
+        if (command == "refresh") refreshAll()
+        return
+    }
+    bridgeDevice()?.enqueue("grouped_light", rid, body)
+}
+
+/** A Hue Scene's command: on/push recalls it; off turns its room or zone off (a smart scene is deactivated). */
+void hueSceneCommand(cd, String command, boolean dynamic = false) {
+    String rid = ridOf(cd.deviceNetworkId as String)
+    Map sc = (state.scenes?.get(rid) ?: [:]) as Map
+    if (command == "refresh") { refreshAll(); return }
+    if (sc.smart) {
+        bridgeDevice()?.enqueue("smart_scene", rid, [recall: [action: command == "off" ? "deactivate" : "activate"]])
+    } else if (command == "off") {
+        if (sc.groupedLight) bridgeDevice()?.enqueue("grouped_light", sc.groupedLight as String, [on: [on: false]])
+    } else {
+        bridgeDevice()?.enqueue("scene", rid, [recall: [action: dynamic && sc.dynamic ? "dynamic_palette" : "active"]])
+    }
 }
 
 /**
@@ -502,9 +625,10 @@ private static void withDuration(Map body, def seconds, Integer defaultMs) {
 
 /** Called by the Hue Bridge device when a command went through while the event stream is down, so state still updates. */
 void assumeApplied(String rtype, String rid, Map body) {
-    if (rtype != "light") return
     def d = getChildDevice(dni(rid))
-    if (d) d.parse(lightEvents(body, (state.lights?.get(rid) ?: [:]) as Map))
+    if (!d) return
+    if (rtype == "light") d.parse(lightEvents(body, (state.lights?.get(rid) ?: [:]) as Map))
+    else if (rtype == "grouped_light") d.parse(groupEvents(body))
 }
 
 // ---------------------------------------------------------------- conversions (pure)

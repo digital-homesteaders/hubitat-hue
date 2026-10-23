@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Rooms, zones and scenes:** Hue Group (a room's or zone's grouped_light, its
+  scenes as light effects) and Hue Scene (scenes and smart scenes as a button
+  and a switch). Group commands and scene recalls share Hue's 1-a-second
+  broadcast budget.
 - Checked against every guideline in Hue's design guidance (see docs/SPEC.md):
   a level equal to the current one isn't re-sent with colour or colour
   temperature; a light that was off after all ("may have no effect") gets the

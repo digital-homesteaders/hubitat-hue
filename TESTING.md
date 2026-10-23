@@ -33,5 +33,8 @@ Nothing yet (0.1.0 preview):
 - [ ] Lights follow the Hue app within a second or two; commands work.
 - [ ] Colour matches the Hue app for a few colours.
 - [ ] A rule switching many lights at once: they all respond, no errors.
+- [ ] Rooms and zones: on/off/level for the whole room; level shows the average of the lights that are on.
+- [ ] Scenes: push recalls it; Set Effect on the room recalls the right scene; effectName follows scenes recalled in the Hue app.
+- [ ] Smart scenes activate and deactivate.
 - [ ] Replay: drop the stream under 60 s, change a light, reconnect.
 - [ ] Memory flat over a day.

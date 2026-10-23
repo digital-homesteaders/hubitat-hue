@@ -154,4 +154,19 @@ check("Hue guidance: no superfluous parameters (a level equal to the current one
     assert !body.containsKey("dimming")
 }
 
+check("groups and scenes: events, effect lists and effect names") {
+    assert app.groupEvents([on: [on: true], dimming: [brightness: 64.6]]) == [[name: "switch", value: "on"], [name: "level", value: 65, unit: "%"]]
+    assert app.groupEvents([on: [on: false], dimming: [brightness: 0]]) == [[name: "switch", value: "off"]]
+    assert app.sceneEvents([type: "scene", status: [active: "dynamic_palette"]]) == [[name: "switch", value: "on"]]
+    assert app.sceneEvents([type: "scene", status: [active: "inactive"]]) == [[name: "switch", value: "off"]]
+    assert app.sceneEvents([type: "smart_scene", state: "active"]) == [[name: "switch", value: "on"]]
+    assert app.sceneEvents([type: "scene", metadata: [name: "x"]]) == []
+    Map scenes = [a: [name: "Relax", groupedLight: "g1"], b: [name: "Bright", groupedLight: "g1"], c: [name: "Night", groupedLight: "g2"]]
+    assert app.groupEffects("g1", scenes)*.name == ["Bright", "Relax"]
+    assert app.effectListEvents("g1", scenes) == [[name: "lightEffects", value: '{"1":"Bright","2":"Relax"}']]
+    assert app.effectNameEvents("Relax", true, "none") == [[name: "effectName", value: "Relax"]]
+    assert app.effectNameEvents("Relax", false, "Relax") == [[name: "effectName", value: "none"]]
+    assert app.effectNameEvents("Relax", false, "Bright") == []
+}
+
 Check.finish()

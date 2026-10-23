@@ -5,13 +5,21 @@ network with Hue's current API (V2). Changes made anywhere (the Hue app, a
 Hue switch, a schedule) show up in Hubitat within a second or two, because
 Hue Connect listens to the bridge's live event stream instead of polling it.
 
-> **Status: 0.1.0 preview, lights only, not yet tested on a hub.** Groups,
-> scenes, sensors and buttons come next. See [TESTING.md](TESTING.md).
+> **Status: 0.1.0 preview, not yet tested on a hub.** Lights, rooms, zones and
+> scenes are in; remotes (dimmers, Tap Dial, wall switches) and sensors come
+> next. See [TESTING.md](TESTING.md).
 
 ## What it does
 
 - **Lights:** on/off, brightness, colour temperature and colour, with a
   driver matched to each light (colour, white ambiance, white, plug).
+- **Rooms and zones:** a Hue Group device per room or zone (and one for all
+  lights) changes every light together in one command, the way the Hue app
+  does. Its scenes are its light effects: pick one with **Set Effect**, or step
+  through them with next/previous.
+- **Scenes:** a Hue Scene device per scene (smart scenes too). Push or switch it
+  on to recall it, optionally "dynamically" for scenes with a palette; switch it
+  off to turn its room off. Its switch shows whether the scene is active.
 - **Live updates** from the bridge's event stream. A short drop is caught up
   by the bridge itself; after a longer one Hue Connect reads everything once.
 - **Kind to your Hue network:** commands are paced the way Hue recommends
@@ -37,11 +45,13 @@ Save), or use HPM once the package is published:
 | `drivers/hue-white-ambiance-light.groovy` | Drivers Code |
 | `drivers/hue-white-light.groovy` | Drivers Code |
 | `drivers/hue-plug.groovy` | Drivers Code |
+| `drivers/hue-group.groovy` | Drivers Code |
+| `drivers/hue-scene.groovy` | Drivers Code |
 
 Then **Apps → Add User App → Hue Connect**:
 1. Press **Search** (or enter the bridge's IP address) and pick your bridge.
 2. Press **Link**, then the round button on top of the bridge within 30 s.
-3. Tick the lights you want, then press **Done**.
+3. Tick the lights, rooms and zones, and scenes you want, then press **Done**.
 
 ## Security
 

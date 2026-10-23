@@ -88,7 +88,7 @@ check("linking: waits for the button (error 101), then keeps the key in a hidden
     assert !JsonOutput.toJson(app.state).contains(KEY)
     assert app.state.bridge == [id: BID, ip: "172.16.213.108", name: "Hue Bridge Pro"]
     Map get = app.callsNamed("asynchttpGet").last()[2]
-    assert get.path == "/clip/v2/resource" && get.query == [type: "device,light,zigbee_connectivity"]
+    assert get.path == "/clip/v2/resource" && get.query == [type: "device,light,zigbee_connectivity,room,zone,bridge_home,grouped_light,scene,smart_scene"]
     assert get.headers["hue-application-key"] == KEY
 }
 
@@ -517,6 +517,124 @@ check("guidance: an error event from the bridge is logged, not passed on as an u
     started(hub, b)
     b.parse(sse("30:0", [[type: "error", data: [[description: "something went wrong"]]]]))
     assert b.driver.log.at("warn").any { it.contains("error event") }
+}
+
+// ---------------------------------------------------------------- phase 2: groups and scenes
+
+/** Linked with groups and scenes chosen too. */
+HubitatScript linkedAll(Hub hub) {
+    HubitatScript app = linked(hub)
+    app.settings.selectedGroups = (app.state.groups as Map).keySet().toList()
+    app.settings.selectedScenes = (app.state.scenes as Map).keySet().toList()
+    app.updated()
+    app.refreshAllDone(resp(200, fixture), [:])
+    hub.settle()
+    return app
+}
+
+FakeDevice deviceOf(HubitatScript app, int n) { app.getChildDevice("hue-${BID}-${rid(n)}") }
+
+/** The bridge answers the last request (frees its in-flight slot). */
+void ack(FakeDevice b) { b.putDone(resp(200, [errors: [], data: []]), puts(b).last()[3]) }
+
+check("groups: one Hue Group per room/zone (and All Hue lights), named from the room; scenes listed with their room") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    assert (app.state.groups as Map).collectEntries { k, g -> [(g.name): g.ownerType] } ==
+        ["Living Room": "room", "Hall": "room", "Downstairs": "zone", "All Hue lights": "bridge_home"]
+    assert deviceOf(app, 401).driverName == "Hue Group" && deviceOf(app, 401).label == "Living Room"
+    assert deviceOf(app, 501).driverName == "Hue Scene" && deviceOf(app, 501).label == "Relax (Living Room)"
+    assert deviceOf(app, 601).label == "Natural light (Hall)"
+}
+
+check("groups: state from grouped_light (on = any light on, level = average of those on); scenes as effects") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice living = deviceOf(app, 401)
+    assert living.current.subMap(["switch", "level"]) == [switch: "on", level: 65]
+    assert deviceOf(app, 402).current.switch == "off" && deviceOf(app, 402).current.level == null, "an all-off room keeps its last level"
+    assert new JsonSlurper().parseText(living.current.lightEffects as String) == ["1": "Concentrate", "2": "Fireplace", "3": "Relax"]
+}
+
+check("scenes: switch follows status.active; the room's effectName follows its active scene") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    assert deviceOf(app, 501).current.switch == "on" && deviceOf(app, 502).current.switch == "off"
+    b.parse(sse("40:0", [[type: "update", data: [[id: rid(502), type: "scene", status: [active: "static"]], [id: rid(501), type: "scene", status: [active: "inactive"]]]]]))
+    hub.settle()
+    assert deviceOf(app, 502).current.switch == "on" && deviceOf(app, 501).current.switch == "off"
+    assert deviceOf(app, 401).current.effectName == "Concentrate"
+    b.parse(sse("41:0", [[type: "update", data: [[id: rid(601), type: "smart_scene", state: "active"]]]]))
+    hub.settle()
+    assert deviceOf(app, 601).current.switch == "on"
+}
+
+check("group commands: PUT on its grouped_light, with on so lights that are off join in") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    deviceOf(app, 401).setLevel(30)
+    List p = puts(b).last()
+    assert p[2].path == "/clip/v2/resource/grouped_light/${rid(401)}"
+    assert p[2].body == [dimming: [brightness: 30d], dynamics: [duration: 400], on: [on: true]]
+    deviceOf(app, 402).startLevelChange("up")
+    hub.advance(1000); b.pump()
+    assert puts(b).last()[2].body.dimming_delta == [action: "up", brightness_delta: 100]
+}
+
+check("scenes: push/on recalls (dynamic if asked and the scene has a palette); off turns its room off; smart scenes activate/deactivate") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    deviceOf(app, 501).push()
+    assert puts(b).last()[2].path == "/clip/v2/resource/scene/${rid(501)}" && puts(b).last()[2].body == [recall: [action: "active"]]
+    deviceOf(app, 504).driver.settings.dynamic = true
+    ack(b)
+    hub.advance(1000); deviceOf(app, 504).on(); b.pump()
+    assert puts(b).last()[2].body == [recall: [action: "dynamic_palette"]]
+    ack(b)
+    hub.advance(1000); deviceOf(app, 501).off(); b.pump()
+    assert puts(b).last()[2].path == "/clip/v2/resource/grouped_light/${rid(401)}" && puts(b).last()[2].body == [on: [on: false]]
+    ack(b)
+    hub.advance(1000); deviceOf(app, 601).on(); b.pump()
+    assert puts(b).last()[2].path == "/clip/v2/resource/smart_scene/${rid(601)}" && puts(b).last()[2].body == [recall: [action: "activate"]]
+    ack(b)
+    hub.advance(1000); deviceOf(app, 601).off(); b.pump()
+    assert puts(b).last()[2].body == [recall: [action: "deactivate"]]
+}
+
+check("effects: setEffect(n) recalls the room's nth scene; next/previous wrap around") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    FakeDevice living = deviceOf(app, 401)
+    living.setEffect(2)
+    assert puts(b).last()[2].path == "/clip/v2/resource/scene/${rid(504)}"                 // Fireplace
+    living.current.effectName = "Relax"
+    hub.advance(1000); living.setNextEffect(); b.pump()
+    assert puts(b).last()[2].path == "/clip/v2/resource/scene/${rid(502)}"                 // wraps to Concentrate
+    hub.advance(1000); living.setPreviousEffect(); b.pump()
+    assert puts(b).last()[2].path == "/clip/v2/resource/scene/${rid(504)}"                 // Relax -> Fireplace
+}
+
+check("pacing: group commands and scene recalls share one 1-a-second budget; lights keep their own") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    deviceOf(app, 401).on()
+    deviceOf(app, 502).push()
+    lightOf(app, 103).on()
+    assert puts(b).collect { it[2].path.split("/")[-2] } == ["grouped_light", "light"], "the scene waits; the light doesn't"
+    hub.advance(900); b.pump()
+    assert puts(b).size() == 2
+    hub.advance(100); b.pump()
+    assert puts(b).last()[2].path.contains("/scene/")
 }
 
 Check.finish()

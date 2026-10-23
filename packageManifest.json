@@ -6,7 +6,7 @@
   "dateReleased": "2026-10-23",
   "documentationLink": "https://github.com/digital-homesteaders/hubitat-hue#readme",
   "licenseFile": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/LICENSE",
-  "releaseNotes": "First preview: lights over the local Hue V2 API with the event stream, paced commands and a bridge health check.",
+  "releaseNotes": "Preview: lights, rooms and zones (with their scenes as effects) and scenes, over the local Hue V2 API with the event stream.",
   "apps": [
     {
       "id": "faf517e0-0ec2-43a8-a862-dd3ca11ae3b6",
@@ -52,6 +52,20 @@
       "name": "Hue Plug",
       "namespace": "hue",
       "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-plug.groovy",
+      "required": true
+    },
+    {
+      "id": "8429f14d-971f-4ad3-9d4b-05931b0fd77f",
+      "name": "Hue Group",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-group.groovy",
+      "required": true
+    },
+    {
+      "id": "a0c4cfe8-8090-4d94-8d1e-2fb085e7257e",
+      "name": "Hue Scene",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-scene.groovy",
       "required": true
     }
   ]

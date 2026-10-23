@@ -143,11 +143,11 @@ Checked 2026-10-23 against every "should/must/avoid/recommend" in `docs/hue-api/
 | HTTPS: validate the certificate against Hue's root CAs with CN = bridge ID; `--insecure` "must never be used in production" | **Not possible on Hubitat**: its HTTP and event-stream clients only offer `ignoreSSLIssues`. Mitigation: the bridge ID is checked over the connection every 5 minutes and on every discovery; the key never leaves the LAN. Revisit if Hubitat adds custom CAs. |
 | HTTPS: keep connections alive / TLS session tickets | Up to Hubitat's HTTP client; Hue Connect's request volume is low |
 | Transition time: set it with every command (default 400 ms otherwise) | Done for on, level, CT and colour; not with off (a transition with off can reset brightness) |
-| Groups: use group commands for synchronous changes | Phase 2 (Hue Group drives the room's grouped_light) |
+| Groups: use group commands for synchronous changes | Done (Hue Group drives the room's or zone's grouped_light) |
 | Groups: an off light ignores other properties unless the same command turns it on | Done (`on` added for lights that aren't on) |
 | Colour: xy > ct > hs; send xy inside the light's gamut; unknown gamut -> full triangle | Done (never sends xy and ct together; gamut from the light, else its gamut_type, else the full triangle) |
 | Bridge limits: 100 app keys, least recently used deleted | Detected (401/403 -> `unauthorized`, logged once); **Link again** keeps the devices |
-| V2 scenes only | Phase 2 uses CLIP v2 `scene`/`smart_scene` |
+| V2 scenes only | Done (CLIP v2 `scene` recall active/dynamic_palette, `smart_scene` activate/deactivate) |
 
 ## Phases
 

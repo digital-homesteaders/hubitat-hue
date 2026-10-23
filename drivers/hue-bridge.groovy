@@ -23,8 +23,9 @@ import java.util.concurrent.ConcurrentHashMap
 @Field static final int QUIET_RECONNECT_S = 1800         // a stream silent this long is reconnected (Last-Event-ID)
 @Field static final int RECONNECT_MAX_S = 900
 
-// Command pacing (Hue system performance guide; aiohue): lights 100 ms apart, groups 1 s, at most 3 in flight
-@Field static final Map SPACING_MS = [light: 100L, grouped_light: 1000L]
+// Command pacing (Hue system performance guide; aiohue): lights 100 ms apart; group commands and scene recalls are Zigbee
+// broadcasts, so they share one budget of 1 a second; at most 3 requests in flight
+@Field static final Map SPACING_MS = [light: 100L, broadcast: 1000L]
 @Field static final int MAX_IN_FLIGHT = 3
 @Field static final int MAX_RETRIES = 8
 
@@ -301,9 +302,13 @@ void pump() {
     if (wake > 0) runInMillis(Math.max(20L, wake), "pump")
 }
 
+/** Pacing class: individual lights, or broadcasts (grouped_light, scene, smart_scene). */
+private static String paceClass(String rtype) { rtype == "light" ? "light" : "broadcast" }
+
 private static long readyAt(Map m, Map e) {
-    long spacing = (SPACING_MS[e.rtype] ?: 100L) as long
-    long last = ((m.lastSent as Map)[e.rtype] ?: 0L) as long
+    String c = paceClass(e.rtype as String)
+    long spacing = (SPACING_MS[c] ?: 100L) as long
+    long last = ((m.lastSent as Map)[c] ?: 0L) as long
     return Math.max(last + spacing, (e.notBefore ?: 0L) as long)
 }
 
@@ -311,7 +316,7 @@ private void send(Map m, Map e) {
     Map c = parent?.bridgeConnection()
     if (!c?.key) return
     m.inFlight = (m.inFlight as int) + 1
-    (m.lastSent as Map)[e.rtype] = now()
+    (m.lastSent as Map)[paceClass(e.rtype as String)] = now()
     logDebug "PUT ${e.rtype}/${e.rid} ${e.body}"
     asynchttpPut("putDone", [uri: "https://${c.ip}", path: "/clip/v2/resource/${e.rtype}/${e.rid}",
                              headers: ["hue-application-key": c.key], contentType: "application/json",
