@@ -560,6 +560,781 @@
    "week_timeslots": [],
    "transition_duration": 60000,
    "state": "inactive"
+  },
+  {
+   "id": "000002bd-0000-4000-8000-0000000002bd",
+   "type": "button",
+   "owner": {
+    "rid": "00000006-0000-4000-8000-000000000006",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 1
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002be-0000-4000-8000-0000000002be",
+   "type": "button",
+   "owner": {
+    "rid": "00000006-0000-4000-8000-000000000006",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 2
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002bf-0000-4000-8000-0000000002bf",
+   "type": "button",
+   "owner": {
+    "rid": "00000006-0000-4000-8000-000000000006",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 3
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002c0-0000-4000-8000-0000000002c0",
+   "type": "button",
+   "owner": {
+    "rid": "00000006-0000-4000-8000-000000000006",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 4
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "00000321-0000-4000-8000-000000000321",
+   "type": "device_power",
+   "owner": {
+    "rid": "00000006-0000-4000-8000-000000000006",
+    "rtype": "device"
+   },
+   "power_state": {
+    "battery_state": "normal",
+    "battery_level": 92
+   }
+  },
+  {
+   "id": "000000ce-0000-4000-8000-0000000000ce",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000006-0000-4000-8000-000000000006",
+    "rtype": "device"
+   },
+   "status": "connected"
+  },
+  {
+   "id": "00000006-0000-4000-8000-000000000006",
+   "type": "device",
+   "metadata": {
+    "name": "Hall Dimmer",
+    "archetype": "unknown_archetype"
+   },
+   "product_data": {
+    "model_id": "RWL022",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Hall Dimmer",
+    "software_version": "2.47.8"
+   },
+   "services": [
+    {
+     "rid": "000002bd-0000-4000-8000-0000000002bd",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002be-0000-4000-8000-0000000002be",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002bf-0000-4000-8000-0000000002bf",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002c0-0000-4000-8000-0000000002c0",
+     "rtype": "button"
+    },
+    {
+     "rid": "00000321-0000-4000-8000-000000000321",
+     "rtype": "device_power"
+    },
+    {
+     "rid": "000000ce-0000-4000-8000-0000000000ce",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000002c7-0000-4000-8000-0000000002c7",
+   "type": "button",
+   "owner": {
+    "rid": "00000007-0000-4000-8000-000000000007",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 1
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002c8-0000-4000-8000-0000000002c8",
+   "type": "button",
+   "owner": {
+    "rid": "00000007-0000-4000-8000-000000000007",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 2
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002c9-0000-4000-8000-0000000002c9",
+   "type": "button",
+   "owner": {
+    "rid": "00000007-0000-4000-8000-000000000007",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 3
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002ca-0000-4000-8000-0000000002ca",
+   "type": "button",
+   "owner": {
+    "rid": "00000007-0000-4000-8000-000000000007",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 4
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002cb-0000-4000-8000-0000000002cb",
+   "type": "relative_rotary",
+   "owner": {
+    "rid": "00000007-0000-4000-8000-000000000007",
+    "rtype": "device"
+   },
+   "relative_rotary": {}
+  },
+  {
+   "id": "00000322-0000-4000-8000-000000000322",
+   "type": "device_power",
+   "owner": {
+    "rid": "00000007-0000-4000-8000-000000000007",
+    "rtype": "device"
+   },
+   "power_state": {
+    "battery_state": "normal",
+    "battery_level": 100
+   }
+  },
+  {
+   "id": "000000cf-0000-4000-8000-0000000000cf",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000007-0000-4000-8000-000000000007",
+    "rtype": "device"
+   },
+   "status": "connected"
+  },
+  {
+   "id": "00000007-0000-4000-8000-000000000007",
+   "type": "device",
+   "metadata": {
+    "name": "Living Tap Dial",
+    "archetype": "unknown_archetype"
+   },
+   "product_data": {
+    "model_id": "RDM002",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Living Tap Dial",
+    "software_version": "2.47.8"
+   },
+   "services": [
+    {
+     "rid": "000002c7-0000-4000-8000-0000000002c7",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002c8-0000-4000-8000-0000000002c8",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002c9-0000-4000-8000-0000000002c9",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002ca-0000-4000-8000-0000000002ca",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002cb-0000-4000-8000-0000000002cb",
+     "rtype": "relative_rotary"
+    },
+    {
+     "rid": "00000322-0000-4000-8000-000000000322",
+     "rtype": "device_power"
+    },
+    {
+     "rid": "000000cf-0000-4000-8000-0000000000cf",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000002d1-0000-4000-8000-0000000002d1",
+   "type": "button",
+   "owner": {
+    "rid": "00000008-0000-4000-8000-000000000008",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 1
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press",
+     "double_short_release"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "00000323-0000-4000-8000-000000000323",
+   "type": "device_power",
+   "owner": {
+    "rid": "00000008-0000-4000-8000-000000000008",
+    "rtype": "device"
+   },
+   "power_state": {
+    "battery_state": "low",
+    "battery_level": 15
+   }
+  },
+  {
+   "id": "000000d0-0000-4000-8000-0000000000d0",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000008-0000-4000-8000-000000000008",
+    "rtype": "device"
+   },
+   "status": "connected"
+  },
+  {
+   "id": "00000008-0000-4000-8000-000000000008",
+   "type": "device",
+   "metadata": {
+    "name": "Bedside Button",
+    "archetype": "unknown_archetype"
+   },
+   "product_data": {
+    "model_id": "ROM001",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Bedside Button",
+    "software_version": "2.47.8"
+   },
+   "services": [
+    {
+     "rid": "000002d1-0000-4000-8000-0000000002d1",
+     "rtype": "button"
+    },
+    {
+     "rid": "00000323-0000-4000-8000-000000000323",
+     "rtype": "device_power"
+    },
+    {
+     "rid": "000000d0-0000-4000-8000-0000000000d0",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000002db-0000-4000-8000-0000000002db",
+   "type": "button",
+   "owner": {
+    "rid": "00000009-0000-4000-8000-000000000009",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 1
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002dc-0000-4000-8000-0000000002dc",
+   "type": "button",
+   "owner": {
+    "rid": "00000009-0000-4000-8000-000000000009",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 2
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "repeat",
+     "short_release",
+     "long_release",
+     "long_press"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "00000324-0000-4000-8000-000000000324",
+   "type": "device_power",
+   "owner": {
+    "rid": "00000009-0000-4000-8000-000000000009",
+    "rtype": "device"
+   },
+   "power_state": {
+    "battery_state": "normal",
+    "battery_level": 88
+   }
+  },
+  {
+   "id": "000000d1-0000-4000-8000-0000000000d1",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "00000009-0000-4000-8000-000000000009",
+    "rtype": "device"
+   },
+   "status": "connected"
+  },
+  {
+   "id": "00000009-0000-4000-8000-000000000009",
+   "type": "device",
+   "metadata": {
+    "name": "Kitchen Wall Switch",
+    "archetype": "unknown_archetype"
+   },
+   "product_data": {
+    "model_id": "RDM001",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Kitchen Wall Switch",
+    "software_version": "2.47.8"
+   },
+   "services": [
+    {
+     "rid": "000002db-0000-4000-8000-0000000002db",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002dc-0000-4000-8000-0000000002dc",
+     "rtype": "button"
+    },
+    {
+     "rid": "00000324-0000-4000-8000-000000000324",
+     "rtype": "device_power"
+    },
+    {
+     "rid": "000000d1-0000-4000-8000-0000000000d1",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000002e5-0000-4000-8000-0000000002e5",
+   "type": "button",
+   "owner": {
+    "rid": "0000000a-0000-4000-8000-00000000000a",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 1
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "long_release"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002e6-0000-4000-8000-0000000002e6",
+   "type": "button",
+   "owner": {
+    "rid": "0000000a-0000-4000-8000-00000000000a",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 2
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "long_release"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002e7-0000-4000-8000-0000000002e7",
+   "type": "button",
+   "owner": {
+    "rid": "0000000a-0000-4000-8000-00000000000a",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 3
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "long_release"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000002e8-0000-4000-8000-0000000002e8",
+   "type": "button",
+   "owner": {
+    "rid": "0000000a-0000-4000-8000-00000000000a",
+    "rtype": "device"
+   },
+   "metadata": {
+    "control_id": 4
+   },
+   "button": {
+    "event_values": [
+     "initial_press",
+     "long_release"
+    ],
+    "repeat_interval": 800
+   }
+  },
+  {
+   "id": "000000fb-0000-4000-8000-0000000000fb",
+   "type": "zgp_connectivity",
+   "owner": {
+    "rid": "0000000a-0000-4000-8000-00000000000a",
+    "rtype": "device"
+   },
+   "status": "connected"
+  },
+  {
+   "id": "0000000a-0000-4000-8000-00000000000a",
+   "type": "device",
+   "metadata": {
+    "name": "Friends of Hue Switch",
+    "archetype": "unknown_archetype"
+   },
+   "product_data": {
+    "model_id": "FOHSWITCH",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Friends of Hue Switch",
+    "software_version": "2.47.8"
+   },
+   "services": [
+    {
+     "rid": "000002e5-0000-4000-8000-0000000002e5",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002e6-0000-4000-8000-0000000002e6",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002e7-0000-4000-8000-0000000002e7",
+     "rtype": "button"
+    },
+    {
+     "rid": "000002e8-0000-4000-8000-0000000002e8",
+     "rtype": "button"
+    },
+    {
+     "rid": "000000fb-0000-4000-8000-0000000000fb",
+     "rtype": "zgp_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000002ef-0000-4000-8000-0000000002ef",
+   "type": "motion",
+   "owner": {
+    "rid": "0000000b-0000-4000-8000-00000000000b",
+    "rtype": "device"
+   },
+   "enabled": true,
+   "motion": {
+    "motion": false,
+    "motion_valid": true,
+    "motion_report": {
+     "changed": "2026-10-23T10:00:00Z",
+     "motion": false
+    }
+   }
+  },
+  {
+   "id": "000002f0-0000-4000-8000-0000000002f0",
+   "type": "light_level",
+   "owner": {
+    "rid": "0000000b-0000-4000-8000-00000000000b",
+    "rtype": "device"
+   },
+   "enabled": true,
+   "light": {
+    "light_level": 20001,
+    "light_level_valid": true,
+    "light_level_report": {
+     "changed": "2026-10-23T10:00:00Z",
+     "light_level": 20001
+    }
+   }
+  },
+  {
+   "id": "000002f1-0000-4000-8000-0000000002f1",
+   "type": "temperature",
+   "owner": {
+    "rid": "0000000b-0000-4000-8000-00000000000b",
+    "rtype": "device"
+   },
+   "enabled": true,
+   "temperature": {
+    "temperature": 21.5,
+    "temperature_valid": true,
+    "temperature_report": {
+     "changed": "2026-10-23T10:00:00Z",
+     "temperature": 21.5
+    }
+   }
+  },
+  {
+   "id": "00000325-0000-4000-8000-000000000325",
+   "type": "device_power",
+   "owner": {
+    "rid": "0000000b-0000-4000-8000-00000000000b",
+    "rtype": "device"
+   },
+   "power_state": {
+    "battery_state": "normal",
+    "battery_level": 77
+   }
+  },
+  {
+   "id": "000000d3-0000-4000-8000-0000000000d3",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "0000000b-0000-4000-8000-00000000000b",
+    "rtype": "device"
+   },
+   "status": "connected"
+  },
+  {
+   "id": "0000000b-0000-4000-8000-00000000000b",
+   "type": "device",
+   "metadata": {
+    "name": "Hall Motion",
+    "archetype": "unknown_archetype"
+   },
+   "product_data": {
+    "model_id": "SML003",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Hall Motion",
+    "software_version": "2.47.8"
+   },
+   "services": [
+    {
+     "rid": "000002ef-0000-4000-8000-0000000002ef",
+     "rtype": "motion"
+    },
+    {
+     "rid": "000002f0-0000-4000-8000-0000000002f0",
+     "rtype": "light_level"
+    },
+    {
+     "rid": "000002f1-0000-4000-8000-0000000002f1",
+     "rtype": "temperature"
+    },
+    {
+     "rid": "00000325-0000-4000-8000-000000000325",
+     "rtype": "device_power"
+    },
+    {
+     "rid": "000000d3-0000-4000-8000-0000000000d3",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
+  },
+  {
+   "id": "000002f9-0000-4000-8000-0000000002f9",
+   "type": "contact",
+   "owner": {
+    "rid": "0000000c-0000-4000-8000-00000000000c",
+    "rtype": "device"
+   },
+   "enabled": true,
+   "contact_report": {
+    "changed": "2026-10-23T10:00:00Z",
+    "state": "contact"
+   }
+  },
+  {
+   "id": "000002fa-0000-4000-8000-0000000002fa",
+   "type": "tamper",
+   "owner": {
+    "rid": "0000000c-0000-4000-8000-00000000000c",
+    "rtype": "device"
+   },
+   "tamper_reports": [
+    {
+     "changed": "2026-10-23T10:00:00Z",
+     "source": "battery_door",
+     "state": "not_tampered"
+    }
+   ]
+  },
+  {
+   "id": "00000326-0000-4000-8000-000000000326",
+   "type": "device_power",
+   "owner": {
+    "rid": "0000000c-0000-4000-8000-00000000000c",
+    "rtype": "device"
+   },
+   "power_state": {
+    "battery_state": "normal",
+    "battery_level": 99
+   }
+  },
+  {
+   "id": "000000d4-0000-4000-8000-0000000000d4",
+   "type": "zigbee_connectivity",
+   "owner": {
+    "rid": "0000000c-0000-4000-8000-00000000000c",
+    "rtype": "device"
+   },
+   "status": "connected"
+  },
+  {
+   "id": "0000000c-0000-4000-8000-00000000000c",
+   "type": "device",
+   "metadata": {
+    "name": "Back Door",
+    "archetype": "unknown_archetype"
+   },
+   "product_data": {
+    "model_id": "SOC001",
+    "manufacturer_name": "Signify Netherlands B.V.",
+    "product_name": "Back Door",
+    "software_version": "2.47.8"
+   },
+   "services": [
+    {
+     "rid": "000002f9-0000-4000-8000-0000000002f9",
+     "rtype": "contact"
+    },
+    {
+     "rid": "000002fa-0000-4000-8000-0000000002fa",
+     "rtype": "tamper"
+    },
+    {
+     "rid": "00000326-0000-4000-8000-000000000326",
+     "rtype": "device_power"
+    },
+    {
+     "rid": "000000d4-0000-4000-8000-0000000000d4",
+     "rtype": "zigbee_connectivity"
+    }
+   ]
   }
  ]
 }

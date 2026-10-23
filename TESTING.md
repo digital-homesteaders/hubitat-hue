@@ -36,5 +36,10 @@ Nothing yet (0.1.0 preview):
 - [ ] Rooms and zones: on/off/level for the whole room; level shows the average of the lights that are on.
 - [ ] Scenes: push recalls it; Set Effect on the room recalls the right scene; effectName follows scenes recalled in the Hue app.
 - [ ] Smart scenes activate and deactivate.
+- [ ] Dimmer switch: pushed, held, released per button; held repeats only with the preference on.
+- [ ] Tap Dial: buttons 1-4, and the ring as 5/6 with rotation degrees.
+- [ ] Smart button: double press as doubleTapped.
+- [ ] Wall switch module and Friends of Hue switches: presses arrive.
+- [ ] Motion sensor: motion, lux and temperature match the Hue app.
 - [ ] Replay: drop the stream under 60 s, change a light, reconnect.
 - [ ] Memory flat over a day.

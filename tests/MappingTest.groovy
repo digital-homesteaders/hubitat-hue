@@ -169,4 +169,58 @@ check("groups and scenes: events, effect lists and effect names") {
     assert app.effectNameEvents("Relax", false, "Bright") == []
 }
 
+// ---------------------------------------------------------------- phase 3: remotes and sensors
+
+Map servicesById = items.findAll { it.type != "device" }.collectEntries { [(it.id): it] }
+Map deviceNamed = items.findAll { it.type == "device" }.collectEntries { [(it.metadata.name): it] }
+String rid(int n) { String.format("%08x-0000-4000-8000-%012x", n, n) }
+
+check("remotes and sensors: kind from services (not the model), buttons by control_id, the ring adds buttons 5 and 6") {
+    Map dimmer = app.sensorInfo(deviceNamed["Hall Dimmer"], servicesById)
+    assert dimmer.kind == "button" && dimmer.numberOfButtons == 4 && dimmer.buttons[rid(703)] == 3 && !dimmer.rotary
+    Map dial = app.sensorInfo(deviceNamed["Living Tap Dial"], servicesById)
+    assert dial.rotary && dial.numberOfButtons == 6
+    assert app.sensorInfo(deviceNamed["Hall Motion"], servicesById).kind == "motion"
+    assert app.sensorInfo(deviceNamed["Back Door"], servicesById).kind == "contact"
+    assert app.sensorInfo(deviceNamed["Friends of Hue Switch"], servicesById).pushOnPress.size() == 4
+    assert app.sensorInfo(deviceNamed["Living Lamp"], servicesById) == null
+}
+
+check("buttons: short release pushes, long press holds, long release releases, double press double-taps; repeat is marked") {
+    Map info = app.sensorInfo(deviceNamed["Bedside Button"], servicesById)
+    def ev = { String e -> app.sensorEvents([id: rid(721), type: "button", button: [button_report: [event: e]]], info, "F") }
+    assert ev("initial_press") == []
+    assert ev("short_release") == [[name: "pushed", value: 1, isStateChange: true, type: "physical"]]
+    assert ev("long_press")[0].subMap(["name", "value"]) == [name: "held", value: 1]
+    assert ev("repeat")[0].repeat == true && ev("repeat")[0].name == "held"
+    assert ev("long_release")[0].name == "released" && ev("double_short_release")[0].name == "doubleTapped"
+}
+
+check("buttons that never report a short release push on the press") {
+    Map info = app.sensorInfo(deviceNamed["Friends of Hue Switch"], servicesById)
+    def ev = { String e -> app.sensorEvents([id: rid(743), type: "button", button: [button_report: [event: e]]], info, "F") }
+    assert ev("initial_press") == [[name: "pushed", value: 3, isStateChange: true, type: "physical"]]
+    assert ev("short_release") == []
+}
+
+check("the Tap Dial ring: clockwise is button 5, anticlockwise 6, with signed degrees (1000 steps per turn)") {
+    Map info = app.sensorInfo(deviceNamed["Living Tap Dial"], servicesById)
+    List cw = app.sensorEvents([id: rid(715), type: "relative_rotary", relative_rotary: [rotary_report: [action: "start", rotation: [direction: "clock_wise", steps: 125, duration: 400]]]], info, "F")
+    assert cw[0].subMap(["name", "value"]) == [name: "pushed", value: 5] && cw[1].subMap(["name", "value"]) == [name: "rotation", value: 45]
+    List ccw = app.sensorEvents([id: rid(715), type: "relative_rotary", relative_rotary: [rotary_report: [action: "repeat", rotation: [direction: "counter_clock_wise", steps: 250, duration: 400]]]], info, "F")
+    assert ccw[0].value == 6 && ccw[1].value == -90
+}
+
+check("sensors: motion, lux from Hue's light level, temperature in the hub's scale, contact, tamper, battery") {
+    assert app.sensorEvents([type: "motion", motion: [motion_report: [motion: true]]], [:], "F") == [[name: "motion", value: "active"]]
+    assert app.luxFromLightLevel(1) == 1 && app.luxFromLightLevel(20001) == 100 && app.luxFromLightLevel(40001) == 10000
+    assert app.sensorEvents([type: "temperature", temperature: [temperature_report: [temperature: 21.5]]], [:], "F")[0].value == 70.7d
+    assert app.sensorEvents([type: "temperature", temperature: [temperature_report: [temperature: 21.5]]], [:], "C")[0].value == 21.5d
+    assert app.sensorEvents([type: "contact", contact_report: [state: "no_contact"]], [:], "F") == [[name: "contact", value: "open"]]
+    assert app.sensorEvents([type: "tamper", tamper_reports: [[state: "tampered"]]], [:], "F") == [[name: "tamper", value: "detected"]]
+    assert app.sensorEvents([type: "device_power", power_state: [battery_level: 15, battery_state: "low"]], [:], "F") ==
+        [[name: "battery", value: 15, unit: "%"], [name: "batteryState", value: "low"]]
+    assert app.sensorEvents([type: "motion", motion: [motion_valid: false]], [:], "F") == []
+}
+
 Check.finish()

@@ -147,6 +147,10 @@ Checked 2026-10-23 against every "should/must/avoid/recommend" in `docs/hue-api/
 | Groups: an off light ignores other properties unless the same command turns it on | Done (`on` added for lights that aren't on) |
 | Colour: xy > ct > hs; send xy inside the light's gamut; unknown gamut -> full triangle | Done (never sends xy and ct together; gamut from the light, else its gamut_type, else the full triangle) |
 | Bridge limits: 100 app keys, least recently used deleted | Detected (401/403 -> `unauthorized`, logged once); **Link again** keeps the devices |
+| V2 guides: one application key per app instance | Done (each Hue Connect instance links its own key) |
+| V2 guides: don't hard-code capabilities by model id (1000+ models) | Done (drivers chosen from each light's features and each device's services) |
+| V2 guides: `id_v1` and V1 will eventually be removed | Done (neither is used, apart from Hue's own V1 link and config endpoints) |
+| V2 guides: the application key must be kept secret | Done (password setting, never logged or put in state) |
 | V2 scenes only | Done (CLIP v2 `scene` recall active/dynamic_palette, `smart_scene` activate/deactivate) |
 
 ## Phases

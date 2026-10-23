@@ -88,7 +88,7 @@ check("linking: waits for the button (error 101), then keeps the key in a hidden
     assert !JsonOutput.toJson(app.state).contains(KEY)
     assert app.state.bridge == [id: BID, ip: "172.16.213.108", name: "Hue Bridge Pro"]
     Map get = app.callsNamed("asynchttpGet").last()[2]
-    assert get.path == "/clip/v2/resource" && get.query == [type: "device,light,zigbee_connectivity,room,zone,bridge_home,grouped_light,scene,smart_scene"]
+    assert get.path == "/clip/v2/resource" && get.query == [type: app.RESOURCE_TYPES.join(",")] && get.query.type.startsWith("device,light,")
     assert get.headers["hue-application-key"] == KEY
 }
 
@@ -635,6 +635,84 @@ check("pacing: group commands and scene recalls share one 1-a-second budget; lig
     assert puts(b).size() == 2
     hub.advance(100); b.pump()
     assert puts(b).last()[2].path.contains("/scene/")
+}
+
+// ---------------------------------------------------------------- phase 3: remotes and sensors
+
+HubitatScript linkedSensors(Hub hub) {
+    HubitatScript app = linked(hub)
+    app.settings.selectedSensors = (app.state.sensors as Map).keySet().toList()
+    app.updated()
+    app.refreshAllDone(resp(200, fixture), [:])
+    hub.settle()
+    return app
+}
+
+check("remotes and sensors: a device each, with the matching driver; initial battery, motion, lux, contact and health") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedSensors(hub)
+    assert [6, 7, 8, 9, 10, 11, 12].collect { deviceOf(app, it)?.driverName } ==
+        ["Hue Button", "Hue Button", "Hue Button", "Hue Button", "Hue Button", "Hue Motion Sensor", "Hue Contact Sensor"]
+    assert deviceOf(app, 7).current.numberOfButtons == 6 && deviceOf(app, 6).current.numberOfButtons == 4
+    assert deviceOf(app, 6).current.battery == 92 && deviceOf(app, 8).current.batteryState == "low"
+    assert deviceOf(app, 11).current.subMap(["motion", "illuminance", "temperature", "healthStatus"]) ==
+        [motion: "inactive", illuminance: 100, temperature: 70.7d, healthStatus: "online"]
+    assert deviceOf(app, 12).current.subMap(["contact", "tamper"]) == [contact: "closed", tamper: "clear"]
+    assert deviceOf(app, 10).current.healthStatus == "online", "battery-free switches report through zgp_connectivity"
+}
+
+check("remotes: live button events reach the right device and button; repeats only if the device asks for them") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedSensors(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    b.parse(sse("50:0", [[type: "update", data: [[id: rid(703), type: "button", owner: [rid: rid(6), rtype: "device"], button: [button_report: [event: "short_release"]]]]]]))
+    b.parse(sse("51:0", [[type: "update", data: [[id: rid(703), type: "button", owner: [rid: rid(6), rtype: "device"], button: [button_report: [event: "repeat"]]]]]]))
+    hub.settle()
+    FakeDevice dimmer = deviceOf(app, 6)
+    assert dimmer.events.findAll { it.name in ["pushed", "held"] }.collect { [it.name, it.value] } == [["pushed", 3]]
+    dimmer.driver.settings.repeatHeld = true
+    b.parse(sse("52:0", [[type: "update", data: [[id: rid(703), type: "button", owner: [rid: rid(6), rtype: "device"], button: [button_report: [event: "repeat"]]]]]]))
+    hub.settle()
+    assert dimmer.events.last().subMap(["name", "value"]) == [name: "held", value: 3] && !dimmer.events.last().containsKey("repeat")
+}
+
+check("remotes: the Tap Dial ring, and a button update without its owner still finds its device") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedSensors(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    b.parse(sse("53:0", [[type: "update", data: [[id: rid(715), type: "relative_rotary", owner: [rid: rid(7), rtype: "device"],
+        relative_rotary: [rotary_report: [action: "start", rotation: [direction: "clock_wise", steps: 250, duration: 300]]]]]]]))
+    b.parse(sse("54:0", [[type: "update", data: [[id: rid(712), type: "button", button: [button_report: [event: "long_press"]]]]]]))
+    hub.settle()
+    FakeDevice dial = deviceOf(app, 7)
+    assert dial.events.findAll { it.name in ["pushed", "held", "rotation"] }.collect { [it.name, it.value] } == [["pushed", 5], ["rotation", 90], ["held", 2]]
+}
+
+check("sensors: live motion, lux, temperature, contact, tamper and battery") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedSensors(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    b.parse(sse("55:0", [[type: "update", data: [
+        [id: rid(751), type: "motion", owner: [rid: rid(11), rtype: "device"], motion: [motion_report: [motion: true]]],
+        [id: rid(752), type: "light_level", owner: [rid: rid(11), rtype: "device"], light: [light_level_report: [light_level: 30001]]],
+        [id: rid(761), type: "contact", owner: [rid: rid(12), rtype: "device"], contact_report: [state: "no_contact"]],
+        [id: rid(762), type: "tamper", owner: [rid: rid(12), rtype: "device"], tamper_reports: [[state: "tampered"]]],
+        [id: rid(805), type: "device_power", owner: [rid: rid(11), rtype: "device"], power_state: [battery_level: 70]]]]]))
+    b.parse(sse("56:0", [[type: "update", data: [[id: rid(753), type: "temperature", temperature: [temperature_report: [temperature: 20.0]]]]]]))
+    hub.settle()
+    assert deviceOf(app, 11).current.subMap(["motion", "illuminance", "battery"]) == [motion: "active", illuminance: 1000, battery: 70]
+    assert deviceOf(app, 11).current.temperature == 68.0d, "an update without its owner still finds its device"
+    assert deviceOf(app, 12).current.subMap(["contact", "tamper"]) == [contact: "open", tamper: "detected"]
+}
+
+check("remotes: pressing a button from Hubitat records a digital event") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedSensors(hub)
+    deviceOf(app, 6).push(2)
+    assert deviceOf(app, 6).events.last().subMap(["name", "value", "type"]) == [name: "pushed", value: 2, type: "digital"]
 }
 
 Check.finish()

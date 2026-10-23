@@ -6,7 +6,7 @@
   "dateReleased": "2026-10-23",
   "documentationLink": "https://github.com/digital-homesteaders/hubitat-hue#readme",
   "licenseFile": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/LICENSE",
-  "releaseNotes": "Preview: lights, rooms and zones (with their scenes as effects) and scenes, over the local Hue V2 API with the event stream.",
+  "releaseNotes": "Preview: lights, rooms, zones, scenes, remotes (dimmers, Tap Dial, wall switches) and sensors over the local Hue V2 API.",
   "apps": [
     {
       "id": "faf517e0-0ec2-43a8-a862-dd3ca11ae3b6",
@@ -67,6 +67,27 @@
       "namespace": "hue",
       "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-scene.groovy",
       "required": true
+    },
+    {
+      "id": "1066e520-577d-4235-8f1b-79e718b4b25e",
+      "name": "Hue Button",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-button.groovy",
+      "required": false
+    },
+    {
+      "id": "5e7ad2c8-3b0f-4461-bdbd-5b2d44786ece",
+      "name": "Hue Motion Sensor",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-motion-sensor.groovy",
+      "required": false
+    },
+    {
+      "id": "3d851224-0015-4da7-adab-b562150ffff2",
+      "name": "Hue Contact Sensor",
+      "namespace": "hue",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-contact-sensor.groovy",
+      "required": false
     }
   ]
 }

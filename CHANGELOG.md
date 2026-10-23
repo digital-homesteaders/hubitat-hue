@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Remotes and sensors:** Hue Button (Dimmer switch, Smart button, Tap Dial with
+  its ring as buttons 5/6 plus `rotation`, wall switch module, Friends of Hue),
+  Hue Motion Sensor (motion, lux, temperature) and Hue Contact Sensor (contact,
+  tamper), each with battery and health (zigbee or zgp connectivity). Kinds come
+  from each device's services, never its model.
 - **Rooms, zones and scenes:** Hue Group (a room's or zone's grouped_light, its
   scenes as light effects) and Hue Scene (scenes and smart scenes as a button
   and a switch). Group commands and scene recalls share Hue's 1-a-second

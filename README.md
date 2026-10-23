@@ -5,9 +5,8 @@ network with Hue's current API (V2). Changes made anywhere (the Hue app, a
 Hue switch, a schedule) show up in Hubitat within a second or two, because
 Hue Connect listens to the bridge's live event stream instead of polling it.
 
-> **Status: 0.1.0 preview, not yet tested on a hub.** Lights, rooms, zones and
-> scenes are in; remotes (dimmers, Tap Dial, wall switches) and sensors come
-> next. See [TESTING.md](TESTING.md).
+> **Status: 0.1.0 preview, not yet tested on a hub.** Lights, rooms, zones,
+> scenes, remotes and sensors are in. See [TESTING.md](TESTING.md).
 
 ## What it does
 
@@ -20,6 +19,12 @@ Hue Connect listens to the bridge's live event stream instead of polling it.
 - **Scenes:** a Hue Scene device per scene (smart scenes too). Push or switch it
   on to recall it, optionally "dynamically" for scenes with a palette; switch it
   off to turn its room off. Its switch shows whether the scene is active.
+- **Remotes:** Dimmer switch, Smart button, Tap Dial, wall switch module and
+  Friends of Hue switches as Hue Button devices: pushed, held, released and
+  double-tapped, numbered as on the device. A Tap Dial's ring is buttons 5
+  (clockwise) and 6 (anticlockwise), with how far it turned in `rotation`.
+- **Sensors:** motion sensors (motion, lux, temperature) and contact sensors
+  (contact, tamper), each with battery and health.
 - **Live updates** from the bridge's event stream. A short drop is caught up
   by the bridge itself; after a longer one Hue Connect reads everything once.
 - **Kind to your Hue network:** commands are paced the way Hue recommends
@@ -47,11 +52,15 @@ Save), or use HPM once the package is published:
 | `drivers/hue-plug.groovy` | Drivers Code |
 | `drivers/hue-group.groovy` | Drivers Code |
 | `drivers/hue-scene.groovy` | Drivers Code |
+| `drivers/hue-button.groovy` | Drivers Code (if you have Hue remotes) |
+| `drivers/hue-motion-sensor.groovy` | Drivers Code (if you have motion sensors) |
+| `drivers/hue-contact-sensor.groovy` | Drivers Code (if you have contact sensors) |
 
 Then **Apps → Add User App → Hue Connect**:
 1. Press **Search** (or enter the bridge's IP address) and pick your bridge.
 2. Press **Link**, then the round button on top of the bridge within 30 s.
-3. Tick the lights, rooms and zones, and scenes you want, then press **Done**.
+3. Tick the lights, rooms and zones, scenes, and remotes and sensors you want,
+   then press **Done**.
 
 ## Security
 

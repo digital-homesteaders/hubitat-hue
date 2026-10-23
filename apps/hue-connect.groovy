@@ -18,7 +18,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 // Resource types fetched in one typed request (GET /clip/v2/resource?type=...)
 @Field static final List RESOURCE_TYPES = ["device", "light", "zigbee_connectivity", "room", "zone", "bridge_home", "grouped_light",
-                                          "scene", "smart_scene"]
+                                          "scene", "smart_scene", "button", "relative_rotary", "bell_button", "motion", "light_level",
+                                          "temperature", "contact", "tamper", "device_power", "zgp_connectivity"]
 // Link: Hue's devicetype is "<app>#<device>", at most 20 and 19 characters
 @Field static final String APP_NAME = "hue_connect"
 @Field static final int LINK_WINDOW_MS = 35000
@@ -27,7 +28,12 @@ import java.util.concurrent.ConcurrentHashMap
 @Field static final String DRIVER_BRIDGE = "Hue Bridge"
 @Field static final Map LIGHT_DRIVERS = [color: "Hue Color Light", ct: "Hue White Ambiance Light", dim: "Hue White Light", onoff: "Hue Plug"]
 @Field static final String DRIVER_GROUP = "Hue Group"
+@Field static final Map SENSOR_KINDS_TEXT = [button: "remote", motion: "motion sensor", contact: "contact sensor"]
 @Field static final String DRIVER_SCENE = "Hue Scene"
+@Field static final Map SENSOR_DRIVERS = [button: "Hue Button", motion: "Hue Motion Sensor", contact: "Hue Contact Sensor"]
+// Services that belong to a remote or sensor device (events for them go to that device)
+@Field static final List SENSOR_SERVICES = ["button", "relative_rotary", "bell_button", "motion", "light_level", "temperature", "contact",
+                                            "tamper", "device_power", "zigbee_connectivity", "zgp_connectivity"]
 // A full 0-100% hold-to-dim ramp takes this long, so a release partway stops it partway
 @Field static final int LEVEL_CHANGE_MS = 4000
 // Hue and saturation just asked for, per light: until the bridge confirms, setHue then setSaturation must use the new
@@ -123,6 +129,13 @@ def mainPage() {
                 if (scenes) {
                     input "selectedScenes", "enum", title: "Scenes to add (each is a button and a switch)", multiple: true, required: false,
                         options: scenes.collectEntries { rid, sc -> [(rid): sceneLabel(sc as Map)] }.sort { it.value }
+                }
+            }
+            section("Remotes and sensors") {
+                Map sensors = (state.sensors ?: [:]) as Map
+                if (sensors) {
+                    input "selectedSensors", "enum", title: "Remotes and sensors to add", multiple: true, required: false,
+                        options: sensors.collectEntries { rid, d -> [(rid): "${d.name} (${SENSOR_KINDS_TEXT[d.kind]})"] }.sort { it.value }
                 }
             }
             section("Options") {
@@ -311,7 +324,7 @@ void applyResources(List items) {
     Map devices = items.findAll { it.type == "device" }.collectEntries { [(it.id): it] }
     Map lights = [:], connectivity = [:]
     items.findAll { it.type == "light" }.each { l -> lights[l.id] = lightInfo(l as Map, devices[l.owner?.rid] as Map) }
-    items.findAll { it.type == "zigbee_connectivity" }.each { z -> connectivity[z.id] = z.owner?.rid }
+    items.findAll { it.type in ["zigbee_connectivity", "zgp_connectivity"] }.each { z -> connectivity[z.id] = z.owner?.rid }
     state.lights = lights
     state.connectivity = connectivity
     Map owners = items.findAll { it.type in ["room", "zone", "bridge_home"] }.collectEntries { [(it.id): it] }
@@ -330,8 +343,40 @@ void applyResources(List items) {
     }
     state.groups = groups
     state.scenes = scenes
+    Map services = items.findAll { it.type in SENSOR_SERVICES }.collectEntries { [(it.id): it] }
+    Map sensors = [:]
+    devices.each { String devRid, Map dev ->
+        Map info = sensorInfo(dev, services)
+        if (info) sensors[devRid] = info
+    }
+    state.sensors = sensors
     groups.each { rid, g -> getChildDevice(dni(rid as String))?.parse(effectListEvents(rid as String, scenes)) }
     hueEvents("update", items)
+}
+
+/**
+ * A remote or sensor device: its kind (from its services, never its model: Hue supports over 1000 models), its buttons by
+ * control_id, whether it has a rotary ring, and which buttons can't report a short release (they push on the press).
+ * Null for a device with no such services.
+ */
+static Map sensorInfo(Map device, Map services) {
+    List refs = (device.services ?: []) as List
+    List types = refs*.rtype
+    String kind = "contact" in types ? "contact" : "motion" in types ? "motion" :
+        types.any { it in ["button", "relative_rotary", "bell_button"] } ? "button" : null
+    if (!kind) return null
+    Map buttons = [:], pushOnPress = [:]
+    refs.findAll { it.rtype in ["button", "bell_button"] }.each { ref ->
+        Map b = services[ref.rid] as Map
+        int id = ((b?.metadata?.control_id ?: (buttons.size() + 1)) as int)
+        buttons[ref.rid] = id
+        List values = (b?.button?.event_values ?: []) as List
+        if (values && !("short_release" in values)) pushOnPress[ref.rid] = true
+    }
+    int count = buttons ? (buttons.values().max() as int) : 0
+    boolean rotary = "relative_rotary" in types
+    return [name: (device.metadata?.name ?: "Hue device") as String, kind: kind, buttons: buttons, pushOnPress: pushOnPress,
+            rotary: rotary, numberOfButtons: count + (rotary ? 2 : 0), model: device.product_data?.model_id, services: refs*.rid]
 }
 
 static String sceneLabel(Map sc) { sc.room ? "${sc.name} (${sc.room})" : sc.name }
@@ -381,11 +426,14 @@ private boolean syncDevices() {
     ((settings.selectedLights ?: []) as List).each { String rid -> if (lights[rid]) wanted[rid] = [LIGHT_DRIVERS[lights[rid].kind], lights[rid].name] }
     ((settings.selectedGroups ?: []) as List).each { String rid -> if (groups[rid]) wanted[rid] = [DRIVER_GROUP, groups[rid].name] }
     ((settings.selectedScenes ?: []) as List).each { String rid -> if (scenes[rid]) wanted[rid] = [DRIVER_SCENE, sceneLabel(scenes[rid] as Map)] }
+    Map sensors = (state.sensors ?: [:]) as Map
+    ((settings.selectedSensors ?: []) as List).each { String rid -> if (sensors[rid]) wanted[rid] = [SENSOR_DRIVERS[sensors[rid].kind], sensors[rid].name] }
     boolean added = false
     wanted.each { String rid, List d ->
         if (!getChildDevice(dni(rid))) {
             def cd = addChildDevice("hue", d[0], dni(rid), [name: d[0], label: d[1], isComponent: false])
             if (d[0] == DRIVER_GROUP) cd.parse(effectListEvents(rid, scenes))
+            if (d[0] == SENSOR_DRIVERS.button) cd.parse([[name: "numberOfButtons", value: sensors[rid].numberOfButtons]])
             added = true
         }
     }
@@ -428,12 +476,34 @@ void hueEvents(String type, List items) {
                 if (g) g.parse(effectNameEvents(sc.name as String, ev[0].value == "on", g.currentValue("effectName") as String))
                 break
             case "zigbee_connectivity":
+            case "zgp_connectivity":
                 String devRid = (state.connectivity?.get(item.id) ?: item.owner?.rid) as String
                 List ev = connectivityEvents(item)
-                if (ev) lightsOfDevice(devRid).each { getChildDevice(dni(it))?.parse(ev) }
+                if (ev) {
+                    lightsOfDevice(devRid).each { getChildDevice(dni(it))?.parse(ev) }
+                    getChildDevice(dni(devRid))?.parse(ev)
+                }
+                break
+            case "button":
+            case "bell_button":
+            case "relative_rotary":
+            case "motion":
+            case "light_level":
+            case "temperature":
+            case "contact":
+            case "tamper":
+            case "device_power":
+                String owner = (item.owner?.rid ?: ownerOf(item.id as String)) as String
+                def d = owner ? getChildDevice(dni(owner)) : null
+                if (d) d.parse(sensorEvents(item, (state.sensors?.get(owner) ?: [:]) as Map, location?.temperatureScale ?: "F"))
                 break
         }
     }
+}
+
+/** The device a service belongs to, for updates that don't carry their owner. */
+private String ownerOf(String serviceRid) {
+    ((state.sensors ?: [:]) as Map).find { rid, d -> serviceRid in ((d.services ?: []) as List) }?.key as String
 }
 
 private List lightsOfDevice(String deviceRid) {
@@ -464,6 +534,63 @@ static List lightEvents(Map item, Map info) {
     }
     return ev
 }
+
+/** Hubitat events from a remote's or sensor's service (an update carries only what changed). */
+static List sensorEvents(Map item, Map info, String scale) {
+    switch (item.type) {
+        case "button":
+        case "bell_button":
+            String event = item.button?.button_report?.event
+            Integer n = ((info.buttons ?: [:]) as Map)[item.id] as Integer
+            if (!event || n == null) return []
+            boolean pushOnPress = ((info.pushOnPress ?: [:]) as Map)[item.id] == true
+            switch (event) {
+                case "short_release": return pushOnPress ? [] : [buttonEvent("pushed", n)]
+                case "initial_press": return pushOnPress ? [buttonEvent("pushed", n)] : []
+                case "long_press": return [buttonEvent("held", n)]
+                case "repeat": return [buttonEvent("held", n) + [repeat: true]]   // the driver passes it on only if asked
+                case "long_release": return [buttonEvent("released", n)]
+                case "double_short_release": return [buttonEvent("doubleTapped", n)]
+            }
+            return []
+        case "relative_rotary":
+            Map r = item.relative_rotary?.rotary_report?.rotation as Map
+            if (!r) return []
+            boolean cw = r.direction == "clock_wise"
+            int base = ((info.numberOfButtons ?: 2) as int) - 2
+            int degrees = Math.round(((r.steps ?: 0) as int) * 360d / 1000d) as int
+            return [buttonEvent("pushed", base + (cw ? 1 : 2)),
+                    [name: "rotation", value: cw ? degrees : -degrees, unit: "degrees", isStateChange: true]]
+        case "motion":
+            def m = item.motion?.motion_report?.motion
+            return m == null ? [] : [[name: "motion", value: m ? "active" : "inactive"]]
+        case "light_level":
+            def v = item.light?.light_level_report?.light_level
+            return v == null ? [] : [[name: "illuminance", value: luxFromLightLevel(v as int), unit: "lux"]]
+        case "temperature":
+            def c = item.temperature?.temperature_report?.temperature
+            if (c == null) return []
+            double t = scale == "C" ? (c as double) : (c as double) * 9d / 5d + 32d
+            return [[name: "temperature", value: Math.round(t * 10) / 10d, unit: "\u00B0${scale}".toString()]]
+        case "contact":
+            def st = item.contact_report?.state
+            return st == null ? [] : [[name: "contact", value: st == "contact" ? "closed" : "open"]]
+        case "tamper":
+            List reports = (item.tamper_reports ?: []) as List
+            return reports ? [[name: "tamper", value: reports.any { it.state == "tampered" } ? "detected" : "clear"]] : []
+        case "device_power":
+            List ev = []
+            if (item.power_state?.battery_level != null) ev << [name: "battery", value: item.power_state.battery_level, unit: "%"]
+            if (item.power_state?.battery_state != null) ev << [name: "batteryState", value: item.power_state.battery_state]
+            return ev
+    }
+    return []
+}
+
+private static Map buttonEvent(String name, int n) { [name: name, value: n, isStateChange: true, type: "physical"] }
+
+/** Hue light_level (10000 x log10(lux) + 1) to lux. */
+static int luxFromLightLevel(int v) { Math.round(Math.pow(10d, (v - 1) / 10000d)) as int }
 
 /** A room's or zone's grouped_light: on = any light on; brightness = the average of the lights that are on. */
 static List groupEvents(Map item) {
