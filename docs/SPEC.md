@@ -103,18 +103,22 @@ the linked one: offline, and rediscovery starts.
 | light `color_temperature.mirek` (null when not in CT mode), `mirek_schema` | `colorTemperature` K, range from the schema |
 | light `color.xy`, `color.gamut` / `gamut_type` | `hue`, `saturation`, `color`, `colorMode` (Hue's RGB-xy formulas, clamped to the light's gamut; a missing gamut falls back to its `gamut_type` corners) |
 | light `effects_v2` | `lightEffects`, `effectName` |
-| light `signaling` | `flash()` |
+| light `signaling` (`on_off` with a duration), else `alert` breathe | `flash()` |
+| light `identify` | `identify()` |
+| light `timed_effects` sunrise / sunset, duration up to 6 h | `startTimedEffect(effect, minutes)` |
+| light `mode` normal / streaming | `hueMode` |
+| device `product_data` model_id, product_name, software_version | data values `model`, `productName`, `firmware` |
 | `dimming_delta` | `startLevelChange` / `stopLevelChange` |
 | zigbee_connectivity `status` | `healthStatus` (online when `connected`) |
 | grouped_light `on` (any light on), `dimming` (average of lights on) | the Hue Group's `switch`, `level` |
 | scene `recall.action` active / dynamic_palette; smart_scene `recall.action` activate | Hue Scene `push()` / `on()` |
-| motion `motion_report.motion` | `motion` |
+| motion `motion_report.motion`, `enabled`, `sensitivity` | `motion`, `motionDetection`, `sensitivity`; enable/disableMotionDetection, setSensitivity |
 | light_level `light_level_report.light_level` | `illuminance` lux = 10^((v - 1) / 10000) |
 | temperature `temperature_report.temperature` (°C) | `temperature` in the hub's scale |
 | device_power `battery_state`, `battery_level` | `battery` |
 | contact `contact_report.state`, tamper `tamper_reports` | `contact`, `tamper` |
 | button `button_report.event` | `pushed` (short_release), `held` (long_press), `released` (long_release), `doubleTapped` (double_short_release) |
-| relative_rotary `rotary_report` | `level`-style steps on the Hue Button (TBD) |
+| relative_rotary `rotary_report` | Hue Button buttons 5 (clockwise) / 6 (anticlockwise) pushed, `rotation` in signed degrees (1000 steps a turn) |
 
 **Commands carry only what changes:** no `on` for a light already on; `on` is
 included when the light is off, because an off light ignores other properties
@@ -159,7 +163,8 @@ Checked 2026-10-23 against every "should/must/avoid/recommend" in `docs/hue-api/
    queue, resync), the four light drivers.
 2. **Groups and scenes:** Hue Group, Hue Scene (scenes and smart scenes).
 3. **Sensors and buttons:** Hue Motion Sensor, Hue Contact Sensor, Hue Button.
-4. **Polish:** effects, flash, HPM package, README, tester guide.
+4. **Polish:** effects, flash, identify, timed effects, hueMode, motion
+   settings, device details, release script and package check, CI.
 
 Each phase: tests under Groovy 2.4 (pure mapping, flows against a fake bridge,
 fixtures from a real bridge), then Doug's hub, then the next phase.

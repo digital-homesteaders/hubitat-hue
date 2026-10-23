@@ -350,6 +350,15 @@ void applyResources(List items) {
         if (info) sensors[devRid] = info
     }
     state.sensors = sensors
+    // Device details, and each light's effect list, on the Hubitat devices (only when they change)
+    (lights + sensors).each { String rid, Map info ->
+        def d = getChildDevice(dni(rid))
+        if (!d) return
+        [model: info.model, productName: info.productName, firmware: info.firmware].each { k, v ->
+            if (v != null && d.getDataValue(k) != v.toString()) d.updateDataValue(k, v.toString())
+        }
+        if (info.effects) d.parse(lightEffectEvents(info))
+    }
     groups.each { rid, g -> getChildDevice(dni(rid as String))?.parse(effectListEvents(rid as String, scenes)) }
     hueEvents("update", items)
 }
@@ -376,10 +385,21 @@ static Map sensorInfo(Map device, Map services) {
     int count = buttons ? (buttons.values().max() as int) : 0
     boolean rotary = "relative_rotary" in types
     return [name: (device.metadata?.name ?: "Hue device") as String, kind: kind, buttons: buttons, pushOnPress: pushOnPress,
-            rotary: rotary, numberOfButtons: count + (rotary ? 2 : 0), model: device.product_data?.model_id, services: refs*.rid]
+            rotary: rotary, numberOfButtons: count + (rotary ? 2 : 0), services: refs*.rid,
+            motion: refs.find { it.rtype == "motion" }?.rid,
+            sensitivityMax: services[refs.find { it.rtype == "motion" }?.rid]?.sensitivity?.sensitivity_max] + productData(device)
 }
 
 static String sceneLabel(Map sc) { sc.room ? "${sc.name} (${sc.room})" : sc.name }
+
+/** A light's own effects as Hubitat light effects: the lightEffects map (number -> name), 0 is "none". */
+static List lightEffectEvents(Map info) {
+    List fx = (info.effects ?: []) as List
+    if (!fx) return []
+    Map numbered = [:]
+    fx.eachWithIndex { e, i -> numbered[(i + 1) as String] = e }
+    return [[name: "lightEffects", value: groovy.json.JsonOutput.toJson(numbered)]]
+}
 
 /** A group's scenes as Hubitat light effects: the lightEffects map (number -> name), in name order. */
 static List groupEffects(String groupedLightRid, Map scenes) {
@@ -396,12 +416,24 @@ static List effectListEvents(String groupedLightRid, Map scenes) {
 /** What doesn't change about a light: name, kind (which driver), colour gamut and CT range. */
 static Map lightInfo(Map l, Map device) {
     String kind = l.color ? "color" : l.color_temperature ? "ct" : l.dimming ? "dim" : "onoff"
-    Map info = [name: (l.metadata?.name ?: device?.metadata?.name ?: "Hue light") as String, kind: kind, device: l.owner?.rid,
-                model: device?.product_data?.model_id]
+    Map info = [name: (l.metadata?.name ?: device?.metadata?.name ?: "Hue light") as String, kind: kind, device: l.owner?.rid] +
+               productData(device)
+    // Effects, timed effects and signals as this light reports them (Hue: never assume from the model)
+    List fx = ((l.effects_v2?.action?.effect_values ?: l.effects?.effect_values ?: []) as List) - "no_effect"
+    if (fx) info.effects = fx
+    List timed = ((l.timed_effects?.effect_values ?: []) as List) - "no_effect"
+    if (timed) info.timedEffects = timed
+    if (l.signaling?.signal_values) info.signals = l.signaling.signal_values
     if (l.color) info.gamut = gamutFor(l.color as Map)
     Map schema = l.color_temperature?.mirek_schema as Map
     if (schema) { info.mirekMin = schema.mirek_minimum; info.mirekMax = schema.mirek_maximum }
     return info
+}
+
+/** Model, product name and firmware from a device resource, for the Hubitat device's data. */
+static Map productData(Map device) {
+    Map p = (device?.product_data ?: [:]) as Map
+    return [model: p.model_id, productName: p.product_name, firmware: p.software_version].findAll { k, v -> v != null }
 }
 
 /** The light's own gamut; if missing, the corners for its gamut_type (Hue: "some bulbs do not properly return the Gamut"). */
@@ -433,6 +465,7 @@ private boolean syncDevices() {
         if (!getChildDevice(dni(rid))) {
             def cd = addChildDevice("hue", d[0], dni(rid), [name: d[0], label: d[1], isComponent: false])
             if (d[0] == DRIVER_GROUP) cd.parse(effectListEvents(rid, scenes))
+            if (lights[rid]?.effects) cd.parse(lightEffectEvents(lights[rid] as Map))
             if (d[0] == SENSOR_DRIVERS.button) cd.parse([[name: "numberOfButtons", value: sensors[rid].numberOfButtons]])
             added = true
         }
@@ -526,6 +559,9 @@ static List lightEvents(Map item, Map info) {
             ev << [name: "colorMode", value: "RGB"]
         }
     }
+    def effect = item.effects_v2?.status?.effect ?: item.effects?.status
+    if (effect != null) ev << [name: "effectName", value: effect == "no_effect" ? "none" : effect]
+    if (item.mode != null) ev << [name: "hueMode", value: item.mode]   // "streaming" while an entertainment session runs
     if (!ctNow && info.kind == "color" && item.color?.xy?.x != null) {
         List hs = xyToHueSat(item.color.xy.x as double, item.color.xy.y as double)
         ev << [name: "hue", value: hs[0]]
@@ -562,8 +598,12 @@ static List sensorEvents(Map item, Map info, String scale) {
             return [buttonEvent("pushed", base + (cw ? 1 : 2)),
                     [name: "rotation", value: cw ? degrees : -degrees, unit: "degrees", isStateChange: true]]
         case "motion":
+            List ev = []
             def m = item.motion?.motion_report?.motion
-            return m == null ? [] : [[name: "motion", value: m ? "active" : "inactive"]]
+            if (m != null) ev << [name: "motion", value: m ? "active" : "inactive"]
+            if (item.enabled != null) ev << [name: "motionDetection", value: item.enabled ? "enabled" : "disabled"]
+            if (item.sensitivity?.sensitivity != null) ev << [name: "sensitivity", value: item.sensitivity.sensitivity]
+            return ev
         case "light_level":
             def v = item.light?.light_level_report?.light_level
             return v == null ? [] : [[name: "illuminance", value: luxFromLightLevel(v as int), unit: "lux"]]
@@ -629,7 +669,7 @@ void hueLightCommand(cd, String command, List args = [], Integer transitionMs = 
     Map info = (state.lights?.get(rid) ?: [:]) as Map
     Map asked = REQUESTED.get(rid) as Map
     boolean fresh = asked && now() - ((asked.at ?: 0L) as long) < REQUESTED_MS
-    Map current = [switch: cd.currentValue("switch"), level: cd.currentValue("level"),
+    Map current = [switch: cd.currentValue("switch"), level: cd.currentValue("level"), effectName: cd.currentValue("effectName"),
                    hue: fresh && asked.hue != null ? asked.hue : cd.currentValue("hue"),
                    saturation: fresh && asked.saturation != null ? asked.saturation : cd.currentValue("saturation")]
     Map hs = requestedHueSat(command, args, current)
@@ -673,6 +713,17 @@ void hueGroupCommand(cd, String command, List args = [], Integer transitionMs = 
         return
     }
     bridgeDevice()?.enqueue("grouped_light", rid, body)
+}
+
+/** A Hue Motion Sensor's command: turn motion detection on or off, or set its sensitivity (0 to the sensor's maximum). */
+void hueSensorCommand(cd, String command, List args = []) {
+    String rid = ridOf(cd.deviceNetworkId as String)
+    Map info = (state.sensors?.get(rid) ?: [:]) as Map
+    if (command == "refresh") { refreshAll(); return }
+    if (!info.motion) return
+    Map body = command == "enableMotionDetection" ? [enabled: true] : command == "disableMotionDetection" ? [enabled: false] :
+        command == "setSensitivity" ? [sensitivity: [sensitivity: Math.max(0, Math.min((info.sensitivityMax ?: 4) as int, (args[0] ?: 0) as int))]] : null
+    if (body) bridgeDevice()?.enqueue("motion", info.motion as String, body)
 }
 
 /** A Hue Scene's command: on/push recalls it; off turns its room or zone off (a smart scene is deactivated). */
@@ -728,6 +779,33 @@ static Map lightCommand(String command, List args, Map info, Map current, Intege
             body.color = [xy: xyMap(hueSatToXy((current.hue != null ? current.hue : 0) as double, args[0] as double, info.gamut as Map))]
             withDuration(body, null, transitionMs)
             break
+        case "setEffect":
+        case "setNextEffect":
+        case "setPreviousEffect":
+            List fx = (info.effects ?: []) as List
+            if (!fx) return null
+            int n
+            if (command == "setEffect") {
+                n = (args[0] ?: 0) as int
+                if (n == 0) return [effects_v2: [action: [effect: "no_effect"]]]
+            } else {
+                int cur = fx.indexOf(current.effectName) + 1   // 0 when no effect is running
+                n = command == "setNextEffect" ? (cur % fx.size()) + 1 : (cur <= 1 ? fx.size() : cur - 1)
+            }
+            if (n < 1 || n > fx.size()) return null
+            body.effects_v2 = [action: [effect: fx[n - 1]]]
+            break
+        case "flash":
+            // Hue's V2 signalling (blinks for the duration); lights without it breathe once instead
+            int ms = Math.max(1000, Math.min(65534000, ((args[0] ?: 10000) as int)))
+            return ("on_off" in ((info.signals ?: []) as List)) ? [signaling: [signal: "on_off", duration: ms]] : [alert: [action: "breathe"]]
+        case "identify":
+            return [identify: [action: "identify"]]
+        case "startTimedEffect":
+            String e = args[0] as String
+            if (!(e in ((info.timedEffects ?: []) as List))) return null
+            int minutes = Math.max(1, Math.min(360, ((args.size() > 1 && args[1] != null ? args[1] : 30) as int)))
+            return [timed_effects: [effect: e, duration: minutes * 60000]]   // runs on the light itself, up to 6 hours
         case "startLevelChange":
             // The whole range over LEVEL_CHANGE_MS, so stopLevelChange on release stops it partway
             return [dimming_delta: [action: args[0] == "down" ? "down" : "up", brightness_delta: 100], dynamics: [duration: LEVEL_CHANGE_MS]]

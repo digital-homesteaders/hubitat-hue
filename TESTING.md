@@ -22,6 +22,9 @@
   commands (spacing, merging, 3 in flight, retries, refusals, updates while the
   stream is down) and the bridge check (online, unauthorized, a different
   bridge, a silent stream).
+- **PackageCheck:** packageManifest.json against the code: every file listed
+  once with its name, namespace and import URL, one version everywhere,
+  required and optional drivers, unique ids, the licence and NOTICE.
 
 ## Confirmed on a real hub
 
@@ -45,5 +48,11 @@
 - [ ] Smart button: double press as doubleTapped.
 - [ ] Wall switch module and Friends of Hue switches: presses arrive.
 - [ ] Motion sensor: motion, lux and temperature match the Hue app.
+- [ ] Effects: Set Effect candle/fire on a colour light; effectName follows the Hue app.
+- [ ] Flash and Identify: the light blinks; flash stops after the chosen seconds.
+- [ ] Sunrise timed effect over a few minutes; switching off ends it.
+- [ ] hueMode turns `streaming` during a Sync/Entertainment session.
+- [ ] Motion sensor: disable/enable detection and set sensitivity; the Hue app agrees.
+- [ ] Device data: model, product name and firmware look right.
 - [ ] Replay: drop the stream under 60 s, change a light, reconnect.
 - [ ] Memory flat over a day.

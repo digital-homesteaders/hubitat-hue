@@ -715,4 +715,39 @@ check("remotes: pressing a button from Hubitat records a digital event") {
     assert deviceOf(app, 6).events.last().subMap(["name", "value", "type"]) == [name: "pushed", value: 2, type: "digital"]
 }
 
+// ---------------------------------------------------------------- phase 4
+
+check("light effects, flash and identify from the device go to the bridge; the effect list and details are on the device") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    app.refreshAllDone(resp(200, fixture), [:]); hub.settle()
+    FakeDevice lamp = lightOf(app, 101), b = bridgeOf(app)
+    assert new JsonSlurper().parseText(lamp.current.lightEffects as String) == ["1": "candle", "2": "fire", "3": "sparkle", "4": "prism"]
+    assert lamp.data.subMap(["model", "productName", "firmware"]) == [model: "LCA001", productName: "Hue color lamp", firmware: "1.122.2"]
+    started(hub, b)
+    lamp.setEffect(1)
+    assert puts(b).last()[2].body == [effects_v2: [action: [effect: "candle"]]]
+    ack(b)
+    hub.advance(100); lamp.flash(); b.pump()
+    assert puts(b).last()[2].body == [signaling: [signal: "on_off", duration: 10000]]
+    ack(b)
+    hub.advance(100); lamp.identify(); b.pump()
+    assert puts(b).last()[2].body == [identify: [action: "identify"]]
+    ack(b)
+    hub.advance(100); lamp.startTimedEffect("sunset", 15); b.pump()
+    assert puts(b).last()[2].body == [timed_effects: [effect: "sunset", duration: 900000]]
+}
+
+check("motion sensor: turning detection off and setting sensitivity PUT on its motion service") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedSensors(hub)
+    FakeDevice b = bridgeOf(app), m = deviceOf(app, 11)
+    started(hub, b)
+    assert m.current.subMap(["motionDetection", "sensitivity"]) == [motionDetection: "enabled", sensitivity: 2]
+    m.disableMotionDetection()
+    assert puts(b).last()[2].path == "/clip/v2/resource/motion/${rid(751)}" && puts(b).last()[2].body == [enabled: false]
+    hub.advance(100); m.setSensitivity(9); b.pump()
+    assert puts(b).last()[2].body == [sensitivity: [sensitivity: 4]]
+}
+
 Check.finish()

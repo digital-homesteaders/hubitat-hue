@@ -11,7 +11,11 @@ Hue Connect listens to the bridge's live event stream instead of polling it.
 ## What it does
 
 - **Lights:** on/off, brightness, colour temperature and colour, with a
-  driver matched to each light (colour, white ambiance, white, plug).
+  driver matched to each light (colour, white ambiance, white, plug). Plus
+  what each light offers: effects (candle, fire, sparkle ...), **Flash**,
+  **Identify**, and sunrise/sunset over up to 6 hours (**Start Timed Effect**).
+  `hueMode` shows `streaming` while an Entertainment app drives the light.
+  Model, product name and firmware are in each device's data.
 - **Rooms and zones:** a Hue Group device per room or zone (and one for all
   lights) changes every light together in one command, the way the Hue app
   does. Its scenes are its light effects: pick one with **Set Effect**, or step
@@ -24,7 +28,8 @@ Hue Connect listens to the bridge's live event stream instead of polling it.
   double-tapped, numbered as on the device. A Tap Dial's ring is buttons 5
   (clockwise) and 6 (anticlockwise), with how far it turned in `rotation`.
 - **Sensors:** motion sensors (motion, lux, temperature) and contact sensors
-  (contact, tamper), each with battery and health.
+  (contact, tamper), each with battery and health. Motion detection can be
+  switched off and on, and its sensitivity set, from Hubitat.
 - **Live updates** from the bridge's event stream. A short drop is caught up
   by the bridge itself; after a longer one Hue Connect reads everything once.
 - **Kind to your Hue network:** commands are paced the way Hue recommends

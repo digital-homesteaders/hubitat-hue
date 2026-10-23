@@ -24,6 +24,11 @@ metadata {
         capability "Refresh"
         attribute "batteryState", "enum", ["normal", "low", "critical"]
         attribute "healthStatus", "enum", ["online", "offline"]
+        attribute "motionDetection", "enum", ["enabled", "disabled"]
+        attribute "sensitivity", "number"
+        command "enableMotionDetection"
+        command "disableMotionDetection"
+        command "setSensitivity", [[name: "Sensitivity*", type: "NUMBER", description: "0 (lowest) to the sensor's maximum (usually 4)"]]
     }
     preferences {
         input "txtEnable", "bool", title: "Log changes", defaultValue: true
@@ -32,7 +37,7 @@ metadata {
 
 void installed() { }
 void updated() { }
-void refresh() { parent?.refreshAll() }
+void refresh() { parent?.hueSensorCommand(device, "refresh") }
 
 /** Events from Hue Connect. */
 void parse(List<Map> events) {
@@ -43,3 +48,8 @@ void parse(List<Map> events) {
         sendEvent(e)
     }
 }
+
+/** Motion detection on or off on the sensor itself (also stops Hue's own automations using it). */
+void enableMotionDetection() { parent?.hueSensorCommand(device, "enableMotionDetection") }
+void disableMotionDetection() { parent?.hueSensorCommand(device, "disableMotionDetection") }
+void setSensitivity(sensitivity) { parent?.hueSensorCommand(device, "setSensitivity", [sensitivity]) }

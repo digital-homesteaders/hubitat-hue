@@ -84,7 +84,7 @@ check("events from a full colour light in colour mode") {
 
 check("events from a white ambiance light in CT mode") {
     Map ev = app.lightEvents(byName["Hall Ceiling"], app.lightInfo(byName["Hall Ceiling"], null)).collectEntries { [(it.name): it.value] }
-    assert ev == [switch: "off", level: 46, colorTemperature: 2732]   // no colorMode: only colour lights have one
+    assert ev == [switch: "off", level: 46, colorTemperature: 2732, effectName: "candle", hueMode: "normal"]   // no colorMode: only colour lights have one
 }
 
 check("events from partial updates: only what changed; CT becoming invalid switches a colour light to RGB") {
@@ -221,6 +221,46 @@ check("sensors: motion, lux from Hue's light level, temperature in the hub's sca
     assert app.sensorEvents([type: "device_power", power_state: [battery_level: 15, battery_state: "low"]], [:], "F") ==
         [[name: "battery", value: 15, unit: "%"], [name: "batteryState", value: "low"]]
     assert app.sensorEvents([type: "motion", motion: [motion_valid: false]], [:], "F") == []
+}
+
+// ---------------------------------------------------------------- phase 4: effects, flash, identify, timed effects, details
+
+check("effects: each light's own list (no_effect left out); setEffect, next/previous wrap, 0 stops") {
+    Map info = app.lightInfo(byName["Living Lamp"], null)
+    assert info.effects == ["candle", "fire", "sparkle", "prism"] && info.timedEffects == ["sunrise", "sunset"]
+    assert app.lightEffectEvents(info) == [[name: "lightEffects", value: '{"1":"candle","2":"fire","3":"sparkle","4":"prism"}']]
+    assert app.lightCommand("setEffect", [2], info, [switch: "on"], 400) == [effects_v2: [action: [effect: "fire"]]]
+    assert app.lightCommand("setEffect", [2], info, [switch: "off"], 400) == [effects_v2: [action: [effect: "fire"]], on: [on: true]]
+    assert app.lightCommand("setEffect", [0], info, [switch: "on"], 400) == [effects_v2: [action: [effect: "no_effect"]]]
+    assert app.lightCommand("setNextEffect", [], info, [switch: "on", effectName: "prism"], 400).effects_v2.action.effect == "candle"
+    assert app.lightCommand("setPreviousEffect", [], info, [switch: "on", effectName: "none"], 400).effects_v2.action.effect == "prism"
+    assert app.lightCommand("setEffect", [9], info, [switch: "on"], 400) == null
+    assert app.lightCommand("setEffect", [1], app.lightInfo(byName["Porch"], null), [switch: "on"], 400) == null
+    assert app.lightEvents([effects_v2: [status: [effect: "no_effect"]]], [kind: "color"]) == [[name: "effectName", value: "none"]]
+    assert app.lightEvents([mode: "streaming"], [kind: "color"]) == [[name: "hueMode", value: "streaming"]]
+}
+
+check("flash uses V2 signalling where the light has it (else one breathe); identify; timed effects only where offered") {
+    Map lamp = app.lightInfo(byName["Living Lamp"], null), porch = app.lightInfo(byName["Porch"], null)
+    assert app.lightCommand("flash", [10000], lamp, [switch: "on"], 400) == [signaling: [signal: "on_off", duration: 10000]]
+    assert app.lightCommand("flash", [10000], porch, [switch: "on"], 400) == [alert: [action: "breathe"]]
+    assert app.lightCommand("identify", [], porch, [switch: "on"], 400) == [identify: [action: "identify"]]
+    assert app.lightCommand("startTimedEffect", ["sunrise", 20], lamp, [switch: "off"], 400) == [timed_effects: [effect: "sunrise", duration: 1200000]]
+    assert app.lightCommand("startTimedEffect", ["sunrise", 999], lamp, [switch: "off"], 400).timed_effects.duration == 21600000
+    assert app.lightCommand("startTimedEffect", ["sunrise", 20], porch, [switch: "off"], 400) == null
+}
+
+check("device details: model, product name and firmware from the device resource") {
+    Map info = app.lightInfo(byName["Living Lamp"], deviceNamed["Living Lamp"])
+    assert info.subMap(["model", "productName", "firmware"]) == [model: "LCA001", productName: "Hue color lamp", firmware: "1.122.2"]
+    assert app.productData(null) == [:]
+}
+
+check("motion sensor: detection on/off and sensitivity as events") {
+    assert app.sensorEvents([type: "motion", enabled: false, sensitivity: [sensitivity: 3]], [:], "F") ==
+        [[name: "motionDetection", value: "disabled"], [name: "sensitivity", value: 3]]
+    Map info = app.sensorInfo(deviceNamed["Hall Motion"], servicesById)
+    assert info.motion == rid(751) && info.sensitivityMax == 4
 }
 
 Check.finish()

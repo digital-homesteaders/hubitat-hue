@@ -302,8 +302,8 @@ void pump() {
     if (wake > 0) runInMillis(Math.max(20L, wake), "pump")
 }
 
-/** Pacing class: individual lights, or broadcasts (grouped_light, scene, smart_scene). */
-private static String paceClass(String rtype) { rtype == "light" ? "light" : "broadcast" }
+/** Pacing class: broadcasts (grouped_light, scene, smart_scene) or single devices (lights, sensors). */
+private static String paceClass(String rtype) { rtype in ["grouped_light", "scene", "smart_scene"] ? "broadcast" : "light" }
 
 private static long readyAt(Map m, Map e) {
     String c = paceClass(e.rtype as String)

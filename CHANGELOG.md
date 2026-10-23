@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Light features:** effects from each light's own list (setEffect, next,
+  previous; `effectName` follows the Hue app), Flash (Hue's signaling for the
+  chosen seconds, else a breathe alert), Identify, sunrise/sunset timed effects
+  up to 6 hours, and `hueMode` (normal or streaming).
+- **Motion sensors:** enable or disable motion detection and set sensitivity;
+  `motionDetection` and `sensitivity` attributes.
+- **Device details:** model, product name and firmware as device data values.
+- **Release tooling:** `scripts/release.sh` stamps one version in the app, every
+  driver and the HPM manifest; `tests/PackageCheck.groovy` checks the manifest
+  against the code; a GitHub workflow runs the tests.
+- Only group commands and scene recalls use the 1-a-second broadcast budget;
+  sensor settings are paced like lights.
 - **Remotes and sensors:** Hue Button (Dimmer switch, Smart button, Tap Dial with
   its ring as buttons 5/6 plus `rotation`, wall switch module, Friends of Hue),
   Hue Motion Sensor (motion, lux, temperature) and Hue Contact Sensor (contact,

@@ -53,7 +53,49 @@
     "speed": 0.0,
     "speed_valid": false
    },
-   "mode": "normal"
+   "mode": "normal",
+   "effects_v2": {
+    "action": {
+     "effect_values": [
+      "no_effect",
+      "candle",
+      "fire",
+      "sparkle",
+      "prism"
+     ]
+    },
+    "status": {
+     "effect": "no_effect",
+     "effect_values": [
+      "no_effect",
+      "candle",
+      "fire",
+      "sparkle",
+      "prism"
+     ]
+    }
+   },
+   "timed_effects": {
+    "status_values": [
+     "no_effect",
+     "sunrise",
+     "sunset"
+    ],
+    "status": "no_effect",
+    "effect_values": [
+     "no_effect",
+     "sunrise",
+     "sunset"
+    ]
+   },
+   "signaling": {
+    "signal_values": [
+     "no_signal",
+     "on_off",
+     "on_off_color",
+     "alternating"
+    ]
+   }
   },
   {
    "id": "00000001-0000-4000-8000-000000000001",
@@ -114,7 +156,22 @@
      "mirek_maximum": 454
     }
    },
-   "mode": "normal"
+   "mode": "normal",
+   "effects_v2": {
+    "action": {
+     "effect_values": [
+      "no_effect",
+      "candle"
+     ]
+    },
+    "status": {
+     "effect": "candle",
+     "effect_values": [
+      "no_effect",
+      "candle"
+     ]
+    }
+   }
   },
   {
    "id": "00000002-0000-4000-8000-000000000002",
@@ -1162,6 +1219,11 @@
      "changed": "2026-10-23T10:00:00Z",
      "motion": false
     }
+   },
+   "sensitivity": {
+    "status": "set",
+    "sensitivity": 2,
+    "sensitivity_max": 4
    }
   },
   {

@@ -23,11 +23,17 @@ metadata {
         capability "SwitchLevel"
         capability "ChangeLevel"
         capability "Refresh"
+        capability "Flash"
+        attribute "hueMode", "enum", ["normal", "streaming"]
+        command "identify"
+        command "startTimedEffect", [[name: "Effect*", type: "ENUM", constraints: ["sunrise", "sunset"]],
+                                     [name: "Minutes", type: "NUMBER", description: "1-360, default 30"]]
         attribute "healthStatus", "enum", ["online", "offline"]
     }
     preferences {
         input "transitionTime", "enum", title: "Transition time", defaultValue: "400",
             options: ["0": "Instant", "200": "0.2 s", "400": "0.4 s (Hue's default)", "1000": "1 s", "2000": "2 s", "5000": "5 s"]
+        input "flashSeconds", "enum", title: "Flash for", defaultValue: "10", options: ["5": "5 s", "10": "10 s", "30": "30 s", "60": "1 min"]
         input "txtEnable", "bool", title: "Log changes", defaultValue: true
     }
 }
@@ -54,3 +60,10 @@ void refresh() { toHue("refresh") }
 void setLevel(level, duration = null) { toHue("setLevel", [level, duration]) }
 void startLevelChange(String direction) { toHue("startLevelChange", [direction]) }
 void stopLevelChange() { toHue("stopLevelChange") }
+
+/** Flash: Hue's V2 signalling for the time set in preferences (Hue picks the rate). */
+void flash(rateToggle = null) { toHue("flash", [((settings.flashSeconds ?: "10") as int) * 1000]) }
+/** One breathe cycle, to find which light this is. */
+void identify() { toHue("identify") }
+/** Sunrise or sunset, run by the light itself over the given minutes (only if the light offers it). */
+void startTimedEffect(String effect, minutes = 30) { toHue("startTimedEffect", [effect, minutes]) }
