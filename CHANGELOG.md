@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Checked against every guideline in Hue's design guidance (see docs/SPEC.md):
+  a level equal to the current one isn't re-sent with colour or colour
+  temperature; a light that was off after all ("may have no effect") gets the
+  command once more with on; on carries the transition time too; rediscovery
+  backs off from 5 to 60 minutes; one bridge found is selected automatically;
+  "not found" advice (router, bridge LED); error events from the bridge are
+  logged.
 - Review fixes: a retried command can't land after a newer one; after a hub
   restart the stream reads all states (a Save still only replays); new lights get
   their state at once; setHue then setSaturation keep both; **Link again** on the

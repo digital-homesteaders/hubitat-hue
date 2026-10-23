@@ -470,4 +470,53 @@ check("review: the page refreshes while searching or reading lights") {
     assert app.mainPage().refreshInterval == 0
 }
 
+// ---------------------------------------------------------------- Hue design guidance (2026-10-23 analysis)
+
+check("guidance: a light that turned out to be off ('may have no effect') gets the command once more with on") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    app.refreshAllDone(resp(200, fixture), [:]); hub.settle()   // the catch-up read: Living Lamp is on
+    lightOf(app, 101).setLevel(40)                       // looks on: no "on" in the body
+    Map data = puts(b).last()[3]
+    assert !data.body.containsKey("on")
+    b.putDone(resp(200, [errors: [[error_code: "attribute_may_have_no_effect", description: "device is off"]], data: []]), data)
+    hub.advance(100); b.pump()
+    assert puts(b).last()[2].body.on == [on: true] && puts(b).last()[2].body.dimming == [brightness: 40d]
+    b.putDone(resp(200, [errors: [[error_code: "attribute_may_have_no_effect", description: "still"]], data: []]), puts(b).last()[3])
+    hub.advance(5000); b.pump()
+    assert puts(b).size() == 2, "only once"
+}
+
+check("guidance: rediscovery after the bridge stops answering backs off (5, 10, 20 ... 60 min) and resets when it's back") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    List times = []
+    6.times { app.bridgeUnreachable(); times << (app.state.rediscoverWaitMs as long); hub.advance(app.state.rediscoverWaitMs as long) }
+    assert times.collect { it.intdiv(60000) } == [10, 20, 40, 60, 60, 60]
+    app.bridgeReachable()
+    assert !app.state.rediscoverWaitMs
+}
+
+check("guidance: a single bridge found is selected automatically; nothing found after a search gives the router/LED advice") {
+    Hub hub = new Hub(root)
+    HubitatScript app = hub.app()
+    app.appButtonHandler("btnSearch"); app.mainPage()
+    hub.advance(20000)
+    app.mainPage()
+    found(app)
+    app.mainPage()
+    assert app.settings.bridgeId == BID
+}
+
+check("guidance: an error event from the bridge is logged, not passed on as an update") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    b.parse(sse("30:0", [[type: "error", data: [[description: "something went wrong"]]]]))
+    assert b.driver.log.at("warn").any { it.contains("error event") }
+}
+
 Check.finish()

@@ -203,7 +203,8 @@ void parse(String raw) {
             return
         }
         (containers instanceof List ? containers : [containers]).each { c ->
-            if (c instanceof Map && c.data instanceof List) parent?.hueEvents(c.type as String, c.data as List)
+            if (c instanceof Map && c.type == "error") log.warn "${device.displayName}: the bridge reported an error event: ${c.data}"
+            else if (c instanceof Map && c.data instanceof List) parent?.hueEvents(c.type as String, c.data as List)
         }
     }
 }
@@ -242,6 +243,7 @@ void checkDone(resp, Map data) {
         parent?.bridgeUnreachable()
         return
     }
+    if (device.currentValue("status") != "online") parent?.bridgeReachable()
     setStatus("online")
     Map m = mem()
     long quietMs = now() - ((m.lastDataAt ?: m.lastAliveAt ?: now()) as long)
@@ -314,7 +316,7 @@ private void send(Map m, Map e) {
     asynchttpPut("putDone", [uri: "https://${c.ip}", path: "/clip/v2/resource/${e.rtype}/${e.rid}",
                              headers: ["hue-application-key": c.key], contentType: "application/json",
                              requestContentType: "application/json", body: e.body, timeout: 10, ignoreSSLIssues: true],
-                 [rtype: e.rtype, rid: e.rid, body: e.body, attempts: e.attempts])
+                 [rtype: e.rtype, rid: e.rid, body: e.body, attempts: e.attempts, withOn: e.withOn])
 }
 
 void putDone(resp, Map data) {
@@ -323,6 +325,14 @@ void putDone(resp, Map data) {
     Integer code = resp?.status as Integer
     if (code == 200 || code == 207) {
         if (code == 207) log.warn "${device.displayName}: ${data.rtype} command partly applied: ${errorText(resp)}"
+        // We left out "on" because the light looked on; if it was actually off, the bridge says the change may have no
+        // effect (an off light ignores other properties). Send it once more with "on".
+        if (!data.withOn && !(data.body as Map).containsKey("on") && hasErrorCode(resp, "attribute_may_have_no_effect")) {
+            logDebug "${data.rtype}/${data.rid} was off after all; resending with on"
+            (m.queue as List).add(0, [rtype: data.rtype, rid: data.rid, body: [on: [on: true]] + (data.body as Map), attempts: 0, withOn: true])
+        } else if (code == 200 && errorText(resp)) {
+            logDebug "${data.rtype}/${data.rid}: ${errorText(resp)}"
+        }
         if (!m.open) parent?.assumeApplied(data.rtype as String, data.rid as String, data.body as Map)
     } else if (code == 401 || code == 403) {
         setStatus("unauthorized")
@@ -347,6 +357,14 @@ void putDone(resp, Map data) {
         log.warn "${device.displayName}: ${data.rtype} command refused (HTTP ${code}): ${errorText(resp)}"
     }
     pump()
+}
+
+private static boolean hasErrorCode(resp, String code) {
+    try {
+        return resp?.json?.errors?.any { it.error_code == code } ?: false
+    } catch (ignored) {
+        return false
+    }
 }
 
 private static String errorText(resp) {

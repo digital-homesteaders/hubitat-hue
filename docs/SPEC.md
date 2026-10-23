@@ -121,6 +121,34 @@ included when the light is off, because an off light ignores other properties
 (`design-guidance/hue-groups-rooms-and-scene-control`). Transition time goes
 on every level, CT and colour command (`watch-that-transition-time`).
 
+## Compliance with Hue's design guidance
+
+Checked 2026-10-23 against every "should/must/avoid/recommend" in `docs/hue-api/design-guidance/`.
+
+| Guidance | Status |
+|---|---|
+| Performance: about 10 commands/s to lights, 100 ms apart; groups at most 1/s | Done (queue spacing; phase 2 shares one 1 s budget across groups and scene recalls) |
+| Performance: no superfluous parameters (one property = one Zigbee message) | Done: `on` only for a light that isn't on; a level equal to the current one isn't re-sent with colour or CT; if the bridge answers `attribute_may_have_no_effect` because the light was off after all, the command is sent once more with `on` |
+| Performance: buffering, then dropped commands, when sending too fast | 429/503 retried with growing waits (V2's equivalent of V1 error 901); a newer command replaces a waiting one |
+| Performance: Entertainment API for fast updates over a long time | Out of scope; the queue coalesces rapid commands to at most 10/s |
+| Events: GET once, then events; don't stay current with repeated GETs | Done; the only periodic GET is the tiny 5-minute `/resource/bridge` health check |
+| Discovery: mDNS, then discovery.meethue.com (at most every 15 min), then manual IP | Done |
+| Discovery: only at setup, or when the stored address stops answering | Done; rediscovery waits 5, 10, 20 ... 60 minutes while it keeps failing |
+| Discovery: validate candidates (`/api/0/config`) before offering them | Done |
+| Discovery: one bridge found -> carry on with it | Done (selected automatically) |
+| Discovery: not found -> advise checking the router and the bridge's network LED | Done |
+| Discovery: store the IP; on restart check the bridge still answers | Done (stored; the check runs at start and every 5 minutes) |
+| Linking: devicetype `<app>#<device>` named after the app | Done (`hue_connect#<hub>`); no client key requested (Entertainment only) |
+| HTTPS always, no fallback to HTTP | Done |
+| HTTPS: validate the certificate against Hue's root CAs with CN = bridge ID; `--insecure` "must never be used in production" | **Not possible on Hubitat**: its HTTP and event-stream clients only offer `ignoreSSLIssues`. Mitigation: the bridge ID is checked over the connection every 5 minutes and on every discovery; the key never leaves the LAN. Revisit if Hubitat adds custom CAs. |
+| HTTPS: keep connections alive / TLS session tickets | Up to Hubitat's HTTP client; Hue Connect's request volume is low |
+| Transition time: set it with every command (default 400 ms otherwise) | Done for on, level, CT and colour; not with off (a transition with off can reset brightness) |
+| Groups: use group commands for synchronous changes | Phase 2 (Hue Group drives the room's grouped_light) |
+| Groups: an off light ignores other properties unless the same command turns it on | Done (`on` added for lights that aren't on) |
+| Colour: xy > ct > hs; send xy inside the light's gamut; unknown gamut -> full triangle | Done (never sends xy and ct together; gamut from the light, else its gamut_type, else the full triangle) |
+| Bridge limits: 100 app keys, least recently used deleted | Detected (401/403 -> `unauthorized`, logged once); **Link again** keeps the devices |
+| V2 scenes only | Phase 2 uses CLIP v2 `scene`/`smart_scene` |
+
 ## Phases
 
 1. **Bridge and lights:** discovery, linking, Hue Bridge (stream, check,

@@ -69,11 +69,16 @@ def mainPage() {
         if (!linked) {
             section("1. Find your Hue Bridge") {
                 Map found = foundBridges()
+                if (found.size() == 1 && !settings.bridgeId) app.updateSetting("bridgeId", [type: "enum", value: found.keySet().first()])
                 if (found) {
                     input "bridgeId", "enum", title: "Bridge", required: false, submitOnChange: true,
                         options: found.collectEntries { id, b -> [(id): "${b.name} (${b.ip})"] }
                 } else {
                     paragraph "No bridges found yet. Press Search, or enter the bridge's IP address below."
+                    if (state.searchUntil && now() > (state.searchUntil as long)) {
+                        paragraph "<small>Still nothing? Check the bridge's address in your router, and that the bridge's middle " +
+                            "(network) light is on. Hubitat and the bridge must be on the same network.</small>"
+                    }
                 }
                 input "manualIp", "text", title: "Bridge IP address (optional)", required: false
                 input "btnSearch", "button", title: "Search"
@@ -195,9 +200,18 @@ private Map foundBridges() { new LinkedHashMap(foundMap()) }
 
 /** Called by the Hue Bridge device when the bridge stops answering: look for it again, by ID (rate limits apply). */
 void bridgeUnreachable() {
-    if (now() - ((state.lastRediscovery ?: 0L) as long) < 5 * 60 * 1000L) return
+    // Hue: discover only when the stored address stops answering, and rarely. Waits 5, 10, 20 ... up to 60 minutes.
+    long waitMs = ((state.rediscoverWaitMs ?: 5 * 60 * 1000L) as long)
+    if (now() - ((state.lastRediscovery ?: 0L) as long) < waitMs) return
     state.lastRediscovery = now()
+    state.rediscoverWaitMs = Math.min(waitMs * 2, 60 * 60 * 1000L)
     discover()
+}
+
+/** Called by the Hue Bridge device when the bridge answers again. */
+void bridgeReachable() {
+    state.remove("rediscoverWaitMs")
+    state.remove("lastRediscovery")
 }
 
 /** A V2-capable bridge from /api/0/config, or null (the round V1 bridge, BSB001, has no V2). */
@@ -434,7 +448,10 @@ static Map lightCommand(String command, List args, Map info, Map current, Intege
     Map body = [:]
     boolean isOn = current.switch == "on"
     switch (command) {
-        case "on": return [on: [on: true]]
+        case "on":
+            body = [on: [on: true]]
+            withDuration(body, null, transitionMs)   // Hue: set the transition with every command, or 400 ms applies
+            return body
         case "off": return [on: [on: false]]
         case "setLevel":
             double level = (args[0] ?: 0) as double
@@ -444,13 +461,13 @@ static Map lightCommand(String command, List args, Map info, Map current, Intege
             break
         case "setColorTemperature":
             body.color_temperature = [mirek: mirekFromKelvin(args[0] as int, info.mirekMin as Integer, info.mirekMax as Integer)]
-            if (args.size() > 1 && args[1] != null) body.dimming = [brightness: brightnessFromLevel(args[1] as double)]
+            if (args.size() > 1 && args[1] != null && !sameLevel(args[1], current.level)) body.dimming = [brightness: brightnessFromLevel(args[1] as double)]
             withDuration(body, args.size() > 2 ? args[2] : null, transitionMs)
             break
         case "setColor":
             Map c = args[0] as Map
             body.color = [xy: xyMap(hueSatToXy((c.hue ?: 0) as double, (c.saturation ?: 0) as double, info.gamut as Map))]
-            if (c.level != null) body.dimming = [brightness: brightnessFromLevel(c.level as double)]
+            if (c.level != null && !sameLevel(c.level, current.level)) body.dimming = [brightness: brightnessFromLevel(c.level as double)]
             withDuration(body, null, transitionMs)
             break
         case "setHue":
@@ -471,6 +488,11 @@ static Map lightCommand(String command, List args, Map info, Map current, Intege
     }
     if (!isOn) body.on = [on: true]
     return body
+}
+
+/** True when a requested level matches the current one: sending it again would be a superfluous Zigbee message. */
+private static boolean sameLevel(def asked, def current) {
+    current != null && Math.round(asked as double) == Math.round(current as double)
 }
 
 private static void withDuration(Map body, def seconds, Integer defaultMs) {

@@ -46,9 +46,13 @@ Then **Apps → Add User App → Hue Connect**:
 ## Security
 
 Everything stays on your network over HTTPS. The bridge's key is kept in a
-hidden (password) setting. Hubitat can't check the bridge's certificate
-against Hue's own certificate authority, so Hue Connect checks the bridge's
-ID every 5 minutes instead.
+hidden (password) setting. Hue asks apps to verify the bridge's certificate
+against Hue's own certificate authority; Hubitat's HTTP client can't do that
+(it can only skip certificate checks), so Hue Connect instead confirms the
+bridge's full ID every 5 minutes and whenever it rediscovers the bridge. Keep
+the bridge and the hub on a network you trust. See
+[docs/SPEC.md](docs/SPEC.md#compliance-with-hues-design-guidance) for how Hue
+Connect follows each of Hue's design guidelines.
 
 ## Credits and licence
 

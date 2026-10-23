@@ -106,7 +106,8 @@ check("health from zigbee_connectivity: online only when connected") {
 
 check("commands: only what changes, with on only for a light that isn't on") {
     Map info = app.lightInfo(byName["Hall Ceiling"], null)
-    assert app.lightCommand("on", [], info, [switch: "off"], 400) == [on: [on: true]]
+    assert app.lightCommand("on", [], info, [switch: "off"], 400) == [on: [on: true], dynamics: [duration: 400]]   // transition with every command
+    assert app.lightCommand("on", [], [kind: "onoff"], [switch: "off"], null) == [on: [on: true]]                  // plugs: none
     assert app.lightCommand("off", [], info, [switch: "on"], 400) == [on: [on: false]]   // no transition with off
     assert app.lightCommand("setLevel", [30, null], info, [switch: "on"], 400) == [dimming: [brightness: 30d], dynamics: [duration: 400]]
     assert app.lightCommand("setLevel", [30, 2], info, [switch: "off"], 400) == [dimming: [brightness: 30d], dynamics: [duration: 2000], on: [on: true]]
@@ -141,6 +142,16 @@ check("setHue then setSaturation (before the bridge answers) combine what was as
     assert app.requestedHueSat("setSaturation", [80], [hue: hs.hue, saturation: hs.saturation]) == [hue: 66, saturation: 80]
     assert app.requestedHueSat("setHue", [10], [hue: 0, saturation: 0]) == [hue: 10, saturation: 0], "saturation 0 is a value, not unset"
     assert app.requestedHueSat("setLevel", [10], [:]) == null
+}
+
+check("Hue guidance: no superfluous parameters (a level equal to the current one isn't sent with colour or CT)") {
+    Map info = app.lightInfo(byName["Living Lamp"], null)
+    Map body = app.lightCommand("setColor", [[hue: 66, saturation: 100, level: 80]], info, [switch: "on", level: 80], null)
+    assert !body.containsKey("dimming")
+    body = app.lightCommand("setColor", [[hue: 66, saturation: 100, level: 50]], info, [switch: "on", level: 80], null)
+    assert body.dimming == [brightness: 50d]
+    body = app.lightCommand("setColorTemperature", [3000, 80, null], app.lightInfo(byName["Hall Ceiling"], null), [switch: "on", level: 80], null)
+    assert !body.containsKey("dimming")
 }
 
 Check.finish()

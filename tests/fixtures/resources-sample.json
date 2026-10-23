@@ -313,6 +313,253 @@
    },
    "status": "connected",
    "mac_address": "00:17:88:01:0b:00:00:cd"
+  },
+  {
+   "id": "0000012d-0000-4000-8000-00000000012d",
+   "type": "room",
+   "metadata": {
+    "name": "Living Room",
+    "archetype": "living_room"
+   },
+   "children": [
+    {
+     "rid": "00000001-0000-4000-8000-000000000001",
+     "rtype": "device"
+    },
+    {
+     "rid": "00000005-0000-4000-8000-000000000005",
+     "rtype": "device"
+    }
+   ],
+   "services": [
+    {
+     "rid": "00000191-0000-4000-8000-000000000191",
+     "rtype": "grouped_light"
+    }
+   ]
+  },
+  {
+   "id": "0000012e-0000-4000-8000-00000000012e",
+   "type": "room",
+   "metadata": {
+    "name": "Hall",
+    "archetype": "hallway"
+   },
+   "children": [
+    {
+     "rid": "00000002-0000-4000-8000-000000000002",
+     "rtype": "device"
+    }
+   ],
+   "services": [
+    {
+     "rid": "00000192-0000-4000-8000-000000000192",
+     "rtype": "grouped_light"
+    }
+   ]
+  },
+  {
+   "id": "0000012f-0000-4000-8000-00000000012f",
+   "type": "zone",
+   "metadata": {
+    "name": "Downstairs",
+    "archetype": "downstairs"
+   },
+   "children": [
+    {
+     "rid": "00000065-0000-4000-8000-000000000065",
+     "rtype": "light"
+    },
+    {
+     "rid": "00000066-0000-4000-8000-000000000066",
+     "rtype": "light"
+    }
+   ],
+   "services": [
+    {
+     "rid": "00000193-0000-4000-8000-000000000193",
+     "rtype": "grouped_light"
+    }
+   ]
+  },
+  {
+   "id": "00000130-0000-4000-8000-000000000130",
+   "type": "bridge_home",
+   "children": [
+    {
+     "rid": "0000012d-0000-4000-8000-00000000012d",
+     "rtype": "room"
+    },
+    {
+     "rid": "0000012e-0000-4000-8000-00000000012e",
+     "rtype": "room"
+    }
+   ],
+   "services": [
+    {
+     "rid": "00000194-0000-4000-8000-000000000194",
+     "rtype": "grouped_light"
+    }
+   ]
+  },
+  {
+   "id": "00000191-0000-4000-8000-000000000191",
+   "type": "grouped_light",
+   "owner": {
+    "rid": "0000012d-0000-4000-8000-00000000012d",
+    "rtype": "room"
+   },
+   "on": {
+    "on": true
+   },
+   "dimming": {
+    "brightness": 65.0
+   },
+   "alert": {
+    "action_values": [
+     "breathe"
+    ]
+   }
+  },
+  {
+   "id": "00000192-0000-4000-8000-000000000192",
+   "type": "grouped_light",
+   "owner": {
+    "rid": "0000012e-0000-4000-8000-00000000012e",
+    "rtype": "room"
+   },
+   "on": {
+    "on": false
+   },
+   "dimming": {
+    "brightness": 0.0
+   }
+  },
+  {
+   "id": "00000193-0000-4000-8000-000000000193",
+   "type": "grouped_light",
+   "owner": {
+    "rid": "0000012f-0000-4000-8000-00000000012f",
+    "rtype": "zone"
+   },
+   "on": {
+    "on": true
+   },
+   "dimming": {
+    "brightness": 80.0
+   }
+  },
+  {
+   "id": "00000194-0000-4000-8000-000000000194",
+   "type": "grouped_light",
+   "owner": {
+    "rid": "00000130-0000-4000-8000-000000000130",
+    "rtype": "bridge_home"
+   },
+   "on": {
+    "on": true
+   },
+   "dimming": {
+    "brightness": 70.0
+   }
+  },
+  {
+   "id": "000001f5-0000-4000-8000-0000000001f5",
+   "type": "scene",
+   "metadata": {
+    "name": "Relax"
+   },
+   "group": {
+    "rid": "0000012d-0000-4000-8000-00000000012d",
+    "rtype": "room"
+   },
+   "actions": [],
+   "speed": 0.6,
+   "auto_dynamic": false,
+   "status": {
+    "active": "static"
+   },
+   "recall": {}
+  },
+  {
+   "id": "000001f6-0000-4000-8000-0000000001f6",
+   "type": "scene",
+   "metadata": {
+    "name": "Concentrate"
+   },
+   "group": {
+    "rid": "0000012d-0000-4000-8000-00000000012d",
+    "rtype": "room"
+   },
+   "actions": [],
+   "speed": 0.6,
+   "auto_dynamic": false,
+   "status": {
+    "active": "inactive"
+   },
+   "recall": {}
+  },
+  {
+   "id": "000001f7-0000-4000-8000-0000000001f7",
+   "type": "scene",
+   "metadata": {
+    "name": "Nightlight"
+   },
+   "group": {
+    "rid": "0000012e-0000-4000-8000-00000000012e",
+    "rtype": "room"
+   },
+   "actions": [],
+   "speed": 0.6,
+   "auto_dynamic": false,
+   "status": {
+    "active": "inactive"
+   },
+   "recall": {}
+  },
+  {
+   "id": "000001f8-0000-4000-8000-0000000001f8",
+   "type": "scene",
+   "metadata": {
+    "name": "Fireplace"
+   },
+   "group": {
+    "rid": "0000012d-0000-4000-8000-00000000012d",
+    "rtype": "room"
+   },
+   "actions": [],
+   "palette": {
+    "color": [
+     {
+      "color": {
+       "xy": {
+        "x": 0.6,
+        "y": 0.38
+       }
+      }
+     }
+    ]
+   },
+   "speed": 0.4,
+   "auto_dynamic": true,
+   "status": {
+    "active": "inactive"
+   },
+   "recall": {}
+  },
+  {
+   "id": "00000259-0000-4000-8000-000000000259",
+   "type": "smart_scene",
+   "metadata": {
+    "name": "Natural light"
+   },
+   "group": {
+    "rid": "0000012e-0000-4000-8000-00000000012e",
+    "rtype": "room"
+   },
+   "week_timeslots": [],
+   "transition_duration": 60000,
+   "state": "inactive"
   }
  ]
 }
