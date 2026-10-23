@@ -19,10 +19,15 @@ String rid(int n) { String.format("%08x-0000-4000-8000-%012x", n, n) }
 
 FakeResp resp(int status, def json = null) { new FakeResp(status: status, json: json) }
 
+/** The bridge's /api/0/config answer arriving, as discovery delivers it. */
+void found(HubitatScript app, String ip = "172.16.213.108") {
+    app.configDone(resp(200, [bridgeid: BID.toUpperCase(), name: "Hue Bridge Pro", modelid: "BSB003"]), [ip: ip])
+}
+
 /** A linked Hue Connect with every sample light added, its Hue Bridge device started. */
 HubitatScript linked(Hub hub) {
     HubitatScript app = hub.app()
-    app.state.found = [(BID): [id: BID, ip: "172.16.213.108", name: "Hue Bridge Pro", model: "BSB003"]]
+    found(app)
     app.settings.bridgeId = BID
     app.linkDone(resp(200, [[success: [username: KEY]]]), [id: BID])
     app.refreshAllDone(resp(200, fixture), [:])
@@ -62,14 +67,14 @@ check("discovery: mDNS from the hub's cache, the cloud endpoint once per 15 minu
     assert app.callsNamed("asynchttpGet").count { it[2].uri == "https://discovery.meethue.com" } == 1, "the cloud endpoint is rate-limited"
     app.configDone(resp(200, [bridgeid: "001788FFFEC52BFC", name: "Hue Bridge Pro", modelid: "BSB003"]), [ip: "172.16.213.108"])
     app.configDone(resp(200, [bridgeid: "001788FFFE000001", modelid: "BSB001"]), [ip: "172.16.213.9"])
-    assert (app.state.found as Map).keySet() == [BID] as Set
+    assert app.foundBridges().keySet() == [BID] as Set
     NetworkUtils.mdns = [:]
 }
 
 check("linking: waits for the button (error 101), then keeps the key in a hidden setting, never in state") {
     Hub hub = new Hub(root)
     HubitatScript app = hub.app()
-    app.state.found = [(BID): [id: BID, ip: "172.16.213.108", name: "Hue Bridge Pro"]]
+    found(app)
     app.settings.bridgeId = BID
     app.appButtonHandler("btnLink")
     app.mainPage()
@@ -90,7 +95,7 @@ check("linking: waits for the button (error 101), then keeps the key in a hidden
 check("linking times out with a clear message when the button isn't pressed") {
     Hub hub = new Hub(root)
     HubitatScript app = hub.app()
-    app.state.found = [(BID): [id: BID, ip: "172.16.213.108", name: "Hue Bridge Pro"]]
+    found(app)
     app.settings.bridgeId = BID
     app.appButtonHandler("btnLink")
     app.mainPage()
@@ -166,7 +171,7 @@ check("stream: a message split across chunks is put back together; several in on
     b.parse(all.substring(0, 20)); b.parse(all.substring(20, 70)); b.parse(all.substring(70))
     hub.settle()
     assert lightOf(app, 103).current.switch == "off" && lightOf(app, 104).current.switch == "on"
-    assert b.driver.state.lastEventId == "6:0"
+    assert b.driver.getClass().MEM[b.idAsLong].lastEventId == "6:0"
 }
 
 check("stream: connectivity updates reach the lights of that device") {
@@ -300,7 +305,7 @@ check("commands: colour goes as xy inside the light's gamut; hold-to-dim uses di
         [body.color.xy.x, body.color.xy.y]
     hub.advance(100)
     lightOf(app, 102).startLevelChange("up")
-    assert puts(b).last()[2].body == [dimming_delta: [action: "up", brightness_delta: 100]]
+    assert puts(b).last()[2].body == [dimming_delta: [action: "up", brightness_delta: 100], dynamics: [duration: 4000]]
 }
 
 // ---------------------------------------------------------------- the bridge check
@@ -348,6 +353,121 @@ check("check: a stream silent for 30 minutes is reconnected with Last-Event-ID, 
     b.eventStreamStatus("START: connected")
     assert esOf(b).connects.size() == connects + 1 && esOf(b).connects.last().opts.headers["Last-Event-ID"] == "11:0"
     assert app.callsNamed("asynchttpGet").size() == reads
+}
+
+// ---------------------------------------------------------------- review fixes (2026-10-23)
+
+check("review: a retry never lands after a newer command for the same light and undoes it") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    lightOf(app, 101).setLevel(50)
+    Map first = puts(b).last()[3]
+    b.putDone(resp(429), first)                 // retry waits 250 ms
+    lightOf(app, 101).setLevel(80)              // newer, during the wait
+    hub.advance(250); b.pump()
+    assert puts(b).size() == 2 && puts(b).last()[2].body.dimming == [brightness: 80d]
+    hub.advance(5000); b.pump()
+    assert puts(b).size() == 2, "no stale retry afterwards"
+}
+
+check("review: after a hub restart (memory empty) the stream reads all states; a Save doesn't") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    b.parse(sse("12:0", [[type: "update", data: [[id: rid(101), type: "light", on: [on: true]]]]]))
+    int reads = app.callsNamed("asynchttpGet").size()
+    b.initialize(); b.connectStream(); b.eventStreamStatus("START: connected")    // Save
+    assert app.callsNamed("asynchttpGet").size() == reads
+    b.driver.getClass().MEM.clear()                                              // a reboot
+    hub.advance(5000)
+    b.initialize(); b.connectStream(); b.eventStreamStatus("START: connected")
+    assert app.callsNamed("asynchttpGet").size() == reads + 1
+}
+
+check("review: initialize cancels a pending backoff reconnect; data on an open stream doesn't touch the scheduler") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    b.initialize()
+    assert b.driver.callsNamed("unschedule").collect { it[1] }.contains("reconnectStream")
+    b.connectStream(); b.eventStreamStatus("START: connected")
+    int unschedules = b.driver.callsNamed("unschedule").size()
+    3.times { b.parse(sse("${20 + it}:0", [[type: "update", data: [[id: rid(101), type: "light", on: [on: true]]]]])) }
+    assert b.driver.callsNamed("unschedule").size() == unschedules
+}
+
+check("review: removing the Hue Bridge device closes its stream and frees its memory") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    b.uninstalled()
+    assert !b.driver.getClass().MEM.containsKey(b.idAsLong) && b.driver.calls.last()[0] == "es.close"
+}
+
+check("review: a light added later gets its state straight away") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    app.settings.selectedLights = [rid(101)]
+    app.updated()
+    int reads = app.callsNamed("asynchttpGet").size()
+    app.settings.selectedLights = [rid(101), rid(102)]
+    app.updated()
+    assert app.callsNamed("asynchttpGet").size() == reads + 1
+}
+
+check("review: setHue then setSaturation in one go: the second command keeps the new hue") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    lightOf(app, 101).setHue(66)
+    lightOf(app, 101).setSaturation(80)
+    hub.advance(100); b.pump()
+    Map xy = puts(b).last()[2].body.color.xy
+    List hs = app.xyToHueSat(xy.x as double, xy.y as double)
+    assert Math.abs((hs[0] as int) - 66) <= 3, "blue (66), not red: ${hs}"
+}
+
+check("review: Link again keeps the devices and swaps in the new key") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    app.appButtonHandler("btnRelink"); app.mainPage()
+    assert app.state.relinking && app.settings.bridgeId == BID
+    app.appButtonHandler("btnLink"); app.mainPage()
+    app.linkDone(resp(200, [[success: [username: "new-key"]]]), [id: BID])
+    assert app.settings.bridgeKey == "new-key" && !app.state.relinking && lightOf(app, 101)
+}
+
+check("review: the bridge at a new address is followed by its ID; unreachable triggers a (rate-limited) search") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    found(app, "172.16.213.200")
+    assert app.state.bridge.ip == "172.16.213.200" && app.bridgeConnection().ip == "172.16.213.200"
+    app.bridgeUnreachable(); app.bridgeUnreachable()
+    assert app.callsNamed("asynchttpGet").count { it[2].uri == "https://discovery.meethue.com" } <= 1
+    assert app.state.searchUntil
+}
+
+check("review: answers from several bridges at once are all kept") {
+    Hub hub = new Hub(root)
+    HubitatScript app = hub.app()
+    app.configDone(resp(200, [bridgeid: "001788FFFE000011", name: "Upstairs", modelid: "BSB002"]), [ip: "10.0.0.11"])
+    app.configDone(resp(200, [bridgeid: "001788FFFE000022", name: "Downstairs", modelid: "BSB002"]), [ip: "10.0.0.22"])
+    assert app.foundBridges().keySet() == ["001788fffe000011", "001788fffe000022"] as Set
+}
+
+check("review: the page refreshes while searching or reading lights") {
+    Hub hub = new Hub(root)
+    HubitatScript app = hub.app()
+    app.appButtonHandler("btnSearch")
+    assert app.mainPage().refreshInterval == 3
+    hub.advance(20000)
+    assert app.mainPage().refreshInterval == 0
 }
 
 Check.finish()

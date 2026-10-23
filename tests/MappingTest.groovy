@@ -84,7 +84,7 @@ check("events from a full colour light in colour mode") {
 
 check("events from a white ambiance light in CT mode") {
     Map ev = app.lightEvents(byName["Hall Ceiling"], app.lightInfo(byName["Hall Ceiling"], null)).collectEntries { [(it.name): it.value] }
-    assert ev == [switch: "off", level: 46, colorTemperature: 2732, colorMode: "CT"]
+    assert ev == [switch: "off", level: 46, colorTemperature: 2732]   // no colorMode: only colour lights have one
 }
 
 check("events from partial updates: only what changed; CT becoming invalid switches a colour light to RGB") {
@@ -122,7 +122,8 @@ check("colour commands use the light's gamut; level changes use dimming_delta; r
     assert body.color.xy.x instanceof Double && body.dimming == [brightness: 70d] && !body.containsKey("on") && !body.containsKey("dynamics")
     assert app.clampToGamut(body.color.xy.x as double, body.color.xy.y as double, info.gamut) == [body.color.xy.x, body.color.xy.y] ||
         near(body.color.xy.x, 0.1532d, 0.01)
-    assert app.lightCommand("startLevelChange", ["down"], info, [switch: "on"], 400) == [dimming_delta: [action: "down", brightness_delta: 100]]
+    assert app.lightCommand("startLevelChange", ["down"], info, [switch: "on"], 400) ==
+        [dimming_delta: [action: "down", brightness_delta: 100], dynamics: [duration: 4000]]   // a release partway stops partway
     assert app.lightCommand("stopLevelChange", [], info, [switch: "on"], 400) == [dimming_delta: [action: "stop"]]
     assert app.lightCommand("refresh", [], info, [switch: "on"], 400) == null
 }
@@ -132,6 +133,14 @@ check("discovery: a V2 bridge from /api/0/config; the round V1 bridge and junk a
         [id: "001788fffe25b8f8", ip: "172.16.213.108", name: "Hue Bridge Pro", model: "BSB003"]
     assert app.bridgeFromConfig([bridgeid: "001788FFFE25B8F8", modelid: "BSB001"], "1.2.3.4") == null
     assert app.bridgeFromConfig([name: "Not a bridge"], "1.2.3.4") == null
+}
+
+check("setHue then setSaturation (before the bridge answers) combine what was asked, not the device's stale values") {
+    Map hs = app.requestedHueSat("setHue", [66], [hue: 0, saturation: 50])
+    assert hs == [hue: 66, saturation: 50]
+    assert app.requestedHueSat("setSaturation", [80], [hue: hs.hue, saturation: hs.saturation]) == [hue: 66, saturation: 80]
+    assert app.requestedHueSat("setHue", [10], [hue: 0, saturation: 0]) == [hue: 10, saturation: 0], "saturation 0 is a value, not unset"
+    assert app.requestedHueSat("setLevel", [10], [:]) == null
 }
 
 Check.finish()

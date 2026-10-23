@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Review fixes: a retried command can't land after a newer one; after a hub
+  restart the stream reads all states (a Save still only replays); new lights get
+  their state at once; setHue then setSaturation keep both; **Link again** on the
+  app page (devices stay); the bridge is followed to a new IP by its ID; hold-to-dim
+  ramps over 4 s so a release stops it; several bridges found at once are all
+  kept; the page refreshes while searching; white ambiance lights don't get a
+  colour mode; less work per event-stream chunk; removing the bridge device
+  closes its stream.
+
 ## 0.1.0 (preview)
 
 - Hue Connect app: bridge discovery (mDNS, discovery.meethue.com, manual IP),
