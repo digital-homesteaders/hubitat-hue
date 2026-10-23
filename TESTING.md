@@ -23,13 +23,17 @@
   stream is down) and the bridge check (online, unauthorized, a different
   bridge, a silent stream).
 
+## Confirmed on a real hub
+
+2026-10-23, Doug's C-8 (platform 2.5.2.139) with a Hue Bridge Pro:
+
+- [x] The app and all ten drivers save in Hubitat's sandbox.
+- [x] Discovery finds the bridge (hub mDNS cache, then `/api/0/config` over HTTPS).
+
 ## Needs a real hub and bridge
 
-Nothing yet (0.1.0 preview):
-
-- [ ] Discovery finds the bridge; linking works with the button.
-- [ ] The sandbox accepts everything (`hubitat.helper.NetworkUtils`, the event
-      stream with `rawData`, `asynchttpPut` with a JSON body).
+- [ ] Linking works with the button.
+- [ ] The event stream (`rawData`) and `asynchttpPut` with a JSON body work in the sandbox.
 - [ ] Lights follow the Hue app within a second or two; commands work.
 - [ ] Colour matches the Hue app for a few colours.
 - [ ] A rule switching many lights at once: they all respond, no errors.
