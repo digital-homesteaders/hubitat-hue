@@ -69,8 +69,11 @@ check("every driver method the app calls exists and is public") {
 }
 
 check("the Hue docs never reach git") {
+    // A fresh clone (CI) has git's template exclude and no docs, so only a checkout with the docs needs the line
     File exclude = new File(root, ".git/info/exclude")
-    assert !exclude.exists() || exclude.text.contains("docs/hue-api/")
+    assert !new File(root, "docs/hue-api").exists() || (exclude.exists() && exclude.text.contains("docs/hue-api/"))
+    Process tracked = "git ls-files docs/hue-api".execute(null, root)
+    assert tracked.text.trim() == "" && tracked.waitFor() == 0
     assert !new File(root, ".gitignore").text.contains("!docs/hue-api")
 }
 
