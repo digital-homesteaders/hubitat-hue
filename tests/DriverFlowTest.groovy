@@ -174,6 +174,24 @@ check("stream: a message split across chunks is put back together; several in on
     assert b.driver.getClass().MEM[b.idAsLong].lastEventId == "6:0"
 }
 
+check("stream: one line per call, newlines stripped (how Hubitat delivers rawData), applies each event") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    String one = sse("8:0", [[type: "update", data: [[id: rid(103), type: "light", on: [on: true], dimming: [brightness: 33]]]]])
+    String two = sse("9:0", [[type: "update", data: [[id: rid(104), type: "light", on: [on: false]]]]])
+    (one + two).split("\n", -1).each { b.parse(it) }
+    hub.settle()
+    assert lightOf(app, 103).current.subMap(["switch", "level"]) == [switch: "on", level: 33]
+    assert lightOf(app, 104).current.switch == "off"
+    assert b.driver.getClass().MEM[b.idAsLong].lastEventId == "9:0"
+    String data = "data: " + JsonOutput.toJson([[type: "update", data: [[id: rid(103), type: "light", on: [on: false]]]]])
+    b.parse(data.substring(0, 30)); b.parse(data.substring(30))   // a long line handed over in two pieces
+    hub.settle()
+    assert lightOf(app, 103).current.switch == "off"
+}
+
 check("stream: connectivity updates reach the lights of that device") {
     Hub hub = new Hub(root)
     HubitatScript app = linked(hub)

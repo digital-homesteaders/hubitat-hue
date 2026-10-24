@@ -179,28 +179,33 @@ void streamDown() {
 
 void reconnectStream() { connectStream() }
 
-/** Raw event-stream text: complete messages end with a blank line; a partial one waits for the rest. */
+/**
+ * Raw event-stream text. Hubitat may hand it over one line per call (newline stripped) or in chunks that split
+ * lines, so it is read line by line: "id:" lines keep the replay position, each "data:" line is one JSON list
+ * of event containers, and a line that isn't finished yet waits for the rest.
+ */
 void parse(String raw) {
     if (state.wanted == false) return
     streamUp()
     Map m = mem()
     m.lastDataAt = now()
-    String text = (m.buf as String) + raw.replace("\r\n", "\n")
-    int end = text.lastIndexOf("\n\n")
-    if (end < 0) { m.buf = text; return }
-    m.buf = text.substring(end + 2)
-    text.substring(0, end).split("\n\n").each { String message ->
-        StringBuilder data = new StringBuilder()
-        message.split("\n").each { String line ->
-            if (line.startsWith("id:")) m.lastEventId = line.substring(3).trim()
-            else if (line.startsWith("data:")) data << line.substring(5).trim()
-        }
-        if (!data) return
+    raw = raw.replace("\r\n", "\n")
+    boolean wholeLine = raw.indexOf("\n") < 0
+    String text = (m.buf as String) + raw
+    m.buf = ""
+    List<String> lines = text.split("\n", -1) as List
+    String tail = wholeLine ? "" : lines.remove(lines.size() - 1)   // after the last newline: unfinished
+    lines.eachWithIndex { String line, int i ->
+        if (!line) return
+        if (line.startsWith("id:")) { m.lastEventId = line.substring(3).trim(); return }
+        String data = line.startsWith("data:") ? line.substring(5).trim() : (line.startsWith("[") ? line : null)
+        if (data == null) return
         def containers
         try {
-            containers = new JsonSlurper().parseText(data.toString())
+            containers = new JsonSlurper().parseText(data)
         } catch (e) {
-            log.warn "${device.displayName}: unreadable event data (${data.length()} characters)"
+            if (wholeLine && i == lines.size() - 1 && text.length() < 65536) m.buf = line   // the rest is still coming
+            else log.warn "${device.displayName}: unreadable event data (${data.length()} characters)"
             return
         }
         (containers instanceof List ? containers : [containers]).each { c ->
@@ -208,6 +213,7 @@ void parse(String raw) {
             else if (c instanceof Map && c.data instanceof List) parent?.hueEvents(c.type as String, c.data as List)
         }
     }
+    if (tail) m.buf = tail
 }
 
 // ---------------------------------------------------------------- bridge check (every 5 minutes)
