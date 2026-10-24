@@ -9,6 +9,11 @@
 - **Motion sensors:** enable or disable motion detection and set sensitivity;
   `motionDetection` and `sensitivity` attributes.
 - **Device details:** model, product name and firmware as device data values.
+- **Hub tests:** `tests/hub/hub-test.py` drives a real hub (Maker API) and checks
+  the bridge: lights both ways, rooms, scenes, effects, flash, timed effects,
+  motion settings, a command burst, stream reconnect, remotes interactively,
+  and a memory soak. Optionally it deploys the code to the hub. It's checked in
+  CI against a fake hub and bridge.
 - **Release tooling:** `scripts/release.sh` stamps one version in the app, every
   driver and the HPM manifest; `tests/PackageCheck.groovy` checks the manifest
   against the code; a GitHub workflow runs the tests.

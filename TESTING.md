@@ -26,6 +26,13 @@
   once with its name, namespace and import URL, one version everywhere,
   required and optional drivers, unique ids, the licence and NOTICE.
 
+## On the hub, automatically
+
+`tests/hub/hub-test.py` (see tests/hub/README.md) runs most of the list below
+against the hub and bridge through Maker API. It checks both directions, watches
+the hub log, and puts everything back afterwards. `--tick` ticks the lines here
+whose tests all passed.
+
 ## Confirmed on a real hub
 
 2026-10-23, Doug's C-8 (platform 2.5.2.139) with a Hue Bridge Pro:

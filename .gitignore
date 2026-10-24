@@ -5,3 +5,8 @@ tests/build/
 
 # Private, kept local
 CLAUDE.md
+
+# Hub test settings (keys) and results, kept local
+tests/hub/hubtest.json
+tests/hub/results/
+__pycache__/

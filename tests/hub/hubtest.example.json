@@ -1,0 +1,15 @@
+{
+  "hub": "192.168.1.20",
+  "makerApiId": 0,
+  "makerToken": "from Maker API's page: the access_token in its local URLs",
+  "hubUser": "",
+  "hubPassword": "",
+  "bridge": "192.168.1.30",
+  "lights": ["Office lamp", {"device": "Desk (renamed in Hubitat)", "hue": "Desk light"}],
+  "room": "Office",
+  "scene": "Bright (Office)",
+  "smartScene": "",
+  "motionSensor": "Hallway sensor",
+  "buttons": ["Hallway dimmer"],
+  "contactSensors": []
+}

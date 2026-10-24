@@ -13,6 +13,8 @@ Bug reports, hub test results and pull requests are welcome.
   DriverFlowTest case, built on synthetic data in `tests/fixtures/`.
 - **Follow Hue's guidance**: no polling, paced commands, only the properties that
   change, HTTPS to the bridge. docs/SPEC.md lists the rules and how each is met.
+- **On a hub:** `tests/hub/hub-test.py` (tests/hub/README.md) checks a change
+  against a real hub and bridge.
 - **Releases**: `scripts/release.sh X.Y.Z "notes"` stamps the version in the app,
   every driver and the HPM manifest; `tests/PackageCheck.groovy` refuses a
   mismatch. Add user-visible changes to CHANGELOG.md.
