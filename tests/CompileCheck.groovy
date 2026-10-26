@@ -69,11 +69,27 @@ check("every driver method the app calls exists and is public") {
 }
 
 check("the Hue docs never reach git") {
-    // A fresh clone (CI) has git's template exclude and no docs, so only a checkout with the docs needs the line
-    File exclude = new File(root, ".git/info/exclude")
-    assert !new File(root, "docs/hue-api").exists() || (exclude.exists() && exclude.text.contains("docs/hue-api/"))
-    Process tracked = "git ls-files docs/hue-api".execute(null, root)
-    assert tracked.text.trim() == "" && tracked.waitFor() == 0
+    // A checkout without git (a tarball) can't commit anything and a fresh clone (CI) has no docs,
+    // so only a checkout with the docs (a directory or a symlink) needs git to ignore it
+    Closure git = { List<String> args ->
+        StringBuilder out = new StringBuilder(), err = new StringBuilder()
+        Process p = (["git"] + args).execute(null, root)
+        p.waitForProcessOutput(out, err)
+        [code: p.exitValue(), out: out.toString().trim(), err: err.toString().trim()]
+    }
+    Map repo
+    try { repo = git(["rev-parse", "--git-dir"]) } catch (IOException noGit) { return }
+    if (repo.code != 0) {
+        assert repo.err.contains("not a git repository"), "git rev-parse failed: ${repo.err}"
+        return
+    }
+    Map tracked = git(["ls-files", "docs/hue-api"])
+    assert tracked.code == 0, "git ls-files failed: ${tracked.err}"
+    assert tracked.out == "", "Hue docs are tracked: ${tracked.out}"
+    if (new File(root, "docs/hue-api").exists()) {
+        Map ignored = git(["check-ignore", "-q", "docs/hue-api"])
+        assert ignored.code == 0, "git does not ignore docs/hue-api: ${ignored.err ?: 'add docs/hue-api to .gitignore'}"
+    }
     assert !new File(root, ".gitignore").text.contains("!docs/hue-api")
 }
 
