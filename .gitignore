@@ -6,6 +6,9 @@ tests/build/
 # Private, kept local
 CLAUDE.md
 
+# Hue developer docs: login-gated Signify content, local reference only (directory or symlink)
+docs/hue-api
+
 # Hub test settings (keys) and results, kept local
 tests/hub/hubtest.json
 tests/hub/results/
