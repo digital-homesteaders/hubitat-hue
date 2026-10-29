@@ -31,7 +31,7 @@ HubitatScript linked(Hub hub) {
     app.settings.bridgeId = BID
     app.linkDone(resp(200, [[success: [username: KEY]]]), [id: BID])
     app.refreshAllDone(resp(200, fixture), [:])
-    app.settings.selectedLights = (app.state.lights as Map).keySet().toList()
+    app.settings.selectedLights = (app.res().lights as Map).keySet().toList()
     app.updated()
     hub.settle()
     return app
@@ -130,6 +130,81 @@ check("devices: unticking a light removes its device") {
     app.settings.selectedLights = [rid(101)]
     app.updated()
     assert lightOf(app, 101) && !lightOf(app, 102) && bridgeOf(app)
+}
+
+check("memory: the bridge's resource lists stay out of state (read on every execution); state keeps only the small things") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    hub.settle()
+    assert app.res().lights && app.res().connectivity != null
+    assert !(["lights", "connectivity", "groups", "scenes", "sensors"].any { app.state.containsKey(it) })
+    assert JsonOutput.toJson(app.state).length() < 1024
+}
+
+check("memory: after a code save, the first event reads the bridge once; until then events still go through") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    app.getClass().RES.clear()                                                   // a code save or restart
+    int runIns = app.callsNamed("runIn").count { it[2] == "refreshAll" }
+    3.times { b.parse(sse("${30 + it}:0", [[type: "update", data: [[id: rid(101), type: "light", on: [on: it % 2 == 0]]]]])) }
+    assert app.callsNamed("runIn").count { it[2] == "refreshAll" } == runIns + 1, "asked once, not per event"
+    assert lightOf(app, 101).current.switch == "on"
+    hub.advance(61000)
+    b.parse(sse("40:0", [[type: "update", data: [[id: rid(101), type: "light", on: [on: true]]]]]))
+    assert app.callsNamed("runIn").count { it[2] == "refreshAll" } == runIns + 2, "a read that never came back is asked again after a minute"
+    app.refreshAllDone(resp(200, fixture), [:])
+    assert app.res().lights
+}
+
+check("memory: Done before the bridge has been read again doesn't delete devices; they're synced once it has") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    app.getClass().RES.clear()
+    app.settings.selectedLights = [rid(101)]
+    app.updated()
+    hub.settle()
+    assert lightOf(app, 101) && lightOf(app, 102), "nothing deleted while the light list is unknown"
+    app.refreshAllDone(resp(200, fixture), [:])
+    hub.settle()
+    assert lightOf(app, 101) && !lightOf(app, 102) && !app.state.syncPending
+}
+
+check("memory: builds that kept the lists in state have them removed on the next read") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    app.state.lights = [x: [name: "old"]]; app.state.scenes = [:]
+    app.refreshAllDone(resp(200, fixture), [:])
+    assert !app.state.containsKey("lights") && !app.state.containsKey("scenes")
+}
+
+check("refresh: Refresh on many devices is one scheduled full read, not one read each, started straight away") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    app.settings.selectedGroups = (app.res().groups as Map).keySet().toList()
+    app.settings.selectedSensors = (app.res().sensors as Map).keySet().toList()
+    app.updated()
+    hub.settle()
+    int gets = app.callsNamed("asynchttpGet").size()
+    List kids = app.getChildDevices().toList()
+    assert kids.size() > 3
+    kids.each { it.refresh() }
+    assert app.callsNamed("asynchttpGet").size() == gets, "no read started directly"
+    assert app.callsNamed("runIn").last()[1..2] == [2, "refreshAll"]   // runIn replaces a pending run: one read
+}
+
+check("refresh: adds and deletes of resources Hue Connect doesn't read don't start a full read") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linked(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    int runIns = app.callsNamed("runIn").count { it[2] == "refreshAll" }
+    b.parse(sse("50:0", [[type: "add", data: [[id: rid(990), type: "behavior_instance"]]],
+                         [type: "delete", data: [[id: rid(991), type: "entertainment_configuration"]]]]))
+    assert app.callsNamed("runIn").count { it[2] == "refreshAll" } == runIns
+    b.parse(sse("51:0", [[type: "delete", data: [[id: rid(992), type: "scene"]]]]))
+    assert app.callsNamed("runIn").count { it[2] == "refreshAll" } == runIns + 1
 }
 
 // ---------------------------------------------------------------- the event stream
@@ -542,8 +617,8 @@ check("guidance: an error event from the bridge is logged, not passed on as an u
 /** Linked with groups and scenes chosen too. */
 HubitatScript linkedAll(Hub hub) {
     HubitatScript app = linked(hub)
-    app.settings.selectedGroups = (app.state.groups as Map).keySet().toList()
-    app.settings.selectedScenes = (app.state.scenes as Map).keySet().toList()
+    app.settings.selectedGroups = (app.res().groups as Map).keySet().toList()
+    app.settings.selectedScenes = (app.res().scenes as Map).keySet().toList()
     app.updated()
     app.refreshAllDone(resp(200, fixture), [:])
     hub.settle()
@@ -558,7 +633,7 @@ void ack(FakeDevice b) { b.putDone(resp(200, [errors: [], data: []]), puts(b).la
 check("groups: one Hue Group per room/zone (and All Hue lights), named from the room; scenes listed with their room") {
     Hub hub = new Hub(root)
     HubitatScript app = linkedAll(hub)
-    assert (app.state.groups as Map).collectEntries { k, g -> [(g.name): g.ownerType] } ==
+    assert (app.res().groups as Map).collectEntries { k, g -> [(g.name): g.ownerType] } ==
         ["Living Room": "room", "Hall": "room", "Downstairs": "zone", "All Hue lights": "bridge_home"]
     assert deviceOf(app, 401).driverName == "Hue Group" && deviceOf(app, 401).label == "Living Room"
     assert deviceOf(app, 501).driverName == "Hue Scene" && deviceOf(app, 501).label == "Relax (Living Room)"
@@ -659,7 +734,7 @@ check("pacing: group commands and scene recalls share one 1-a-second budget; lig
 
 HubitatScript linkedSensors(Hub hub) {
     HubitatScript app = linked(hub)
-    app.settings.selectedSensors = (app.state.sensors as Map).keySet().toList()
+    app.settings.selectedSensors = (app.res().sensors as Map).keySet().toList()
     app.updated()
     app.refreshAllDone(resp(200, fixture), [:])
     hub.settle()

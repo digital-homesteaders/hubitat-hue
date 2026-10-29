@@ -73,11 +73,18 @@ Entertainment API, so it isn't requested or stored.
 The key goes in a password-type setting, never in `state`.
 
 **Startup and resync:** `GET /clip/v2/resource?type=<the used types>`, one request.
+What it finds (lights, groups, scenes, sensors) is kept in memory (`@Field static`),
+not in `state`: an app's state is read on every execution, and every event and
+command runs the app. A restart or code save empties it; the first use reads the
+bridge again (at most once a minute), and Done waits for that read before adding
+or removing devices. Refresh on any device schedules one full read 2 s later
+(`runIn` replaces a pending one), so refreshing many devices is one read.
 
 **Event stream** (`/eventstream/clip/v2`, `rawData: true`): keep each `id:`
 and reconnect with `Last-Event-ID`. Resync only after a gap over 60 s or with
 no ID to resume from. Handle `update`, `add` and `delete` events; `add` and
-`delete` refresh the device list. Reconnect waits 5, 10, 20 s and so on up to
+`delete` of a used type refresh the device list (others, such as behaviors or
+entertainment setups, are ignored). Reconnect waits 5, 10, 20 s and so on up to
 15 minutes. A stream silent for 30 minutes is reconnected (Hue sends no
 keepalive).
 

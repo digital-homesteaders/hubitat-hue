@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Memory:** the bridge's lights, groups, scenes and sensors are kept in memory,
+  not in the app's state. Hubitat reads an app's state on every execution, and
+  with many lights and scenes that was about 64 KB parsed for every event and
+  command. After a hub restart or code save the bridge is read again on first
+  use, and pressing Done before that read only syncs devices once it arrives
+  (instead of seeing no lights and removing them).
+- **Refresh:** Refresh on any Hue device schedules one full read in 2 seconds
+  instead of starting one straight away, so refreshing many devices at once is
+  one read. Adds and deletes on the bridge start a read only for resource types
+  Hue Connect uses.
 - **Light features:** effects from each light's own list (setEffect, next,
   previous; `effectName` follows the Hue app), Flash (Hue's signaling for the
   chosen seconds, else a breathe alert), Identify, sunrise/sunset timed effects
