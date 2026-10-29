@@ -79,7 +79,7 @@ void initialize() {
 
 void logsOff() { device.updateSetting("logEnable", [value: "false", type: "bool"]) }
 
-void refresh() { parent?.refreshAll() }
+void refresh() { parent?.requestRefresh() }
 
 void reconnect() {
     state.retryS = null

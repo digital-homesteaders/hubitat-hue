@@ -35,7 +35,7 @@ metadata {
 
 void installed() { }
 void updated() { }
-void refresh() { parent?.refreshAll() }
+void refresh() { parent?.requestRefresh() }
 
 /** Events from Hue Connect. Button events are always state changes; "held" repeats while held only if asked. */
 void parse(List<Map> events) {

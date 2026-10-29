@@ -31,7 +31,7 @@ metadata {
 
 void installed() { }
 void updated() { }
-void refresh() { parent?.refreshAll() }
+void refresh() { parent?.requestRefresh() }
 
 /** Events from Hue Connect. */
 void parse(List<Map> events) {
