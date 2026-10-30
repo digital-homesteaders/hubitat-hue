@@ -152,6 +152,14 @@ check("power-up: every real light offers it, reports a preset the driver can sho
     assert shown == [previous: 50, safety: 11], "the bridge's lights as dumped: ${shown}"
 }
 
+check("bulk power-up: on the real bridge the bulbs are 58 lights, the plugs 3, and every light offers it") {
+    Map infos = lights.collectEntries { [(it.id): infoOf(it)] }
+    assert app.powerUpTargets(infos, ["color", "ct", "dim"], true, []).size() == 58
+    assert app.powerUpTargets(infos, ["onoff"], true, []).size() == 3
+    assert app.powerUpTargets(infos, ["color", "ct", "dim", "onoff"], true, []).size() == 61
+    assert app.powerUpTargets(infos, ["color"], false, [lights[0].id, lights[1].id]).size() <= 2
+}
+
 check("scene speed: dynamic scenes show a whole percentage, static scenes and smart scenes show none") {
     List<Map> scenes = ofType("scene")
     int dynamic = 0

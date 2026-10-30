@@ -31,6 +31,11 @@
   Start Color Temperature Change (warmer or cooler) and Stop Color Temperature
   Change, using Hue's colour temperature delta over the light's own range, so a
   held button ramps and releasing stops it partway.
+- **Bulk power-up and relabel:** the app's page sets a power-up behaviour on
+  many lights at once, for the light types you pick (colour, white ambiance,
+  white, plugs; bulbs by default) and either the lights added to Hubitat or all
+  on the bridge, paced by the bridge queue. **Relabel devices to match the Hue
+  app** resets every label, for devices labelled before names followed Hue.
 - **Power-up behaviour:** every light and plug shows `powerUp` (previous,
   lastOnState, safety, off or custom) and **Set Power Up** changes it, so a
   light can stay off after an outage. It sends only the preset, and only to

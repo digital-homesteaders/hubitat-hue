@@ -982,4 +982,64 @@ check("colour temperature ramp: one PUT for a light and for a group; a newer ram
     assert puts(b).last()[2].body == [color_temperature_delta: [action: "down", mirek_delta: 347], dynamics: [duration: 4000]]
 }
 
+// ---------------------------------------------------------------- bulk power-up and relabel
+
+check("bulk power-up: the button shows for a behaviour and matching lights; it sends the preset to the picked types, paced") {
+    List real = fixture.data.findAll { it.type == "light" }
+    real.each { it.powerup = [preset: "powerfail", configured: true, on: [mode: "previous"]] }
+    try {
+        Hub hub = new Hub(root)
+        HubitatScript app = linked(hub)
+        FakeDevice b = bridgeOf(app)
+        started(hub, b)
+        Map lights = app.res().lights as Map
+        List bulbs = lights.findAll { k, l -> l.kind in ["color", "ct", "dim"] }.keySet().toList()
+        List plugs = lights.findAll { k, l -> l.kind == "onoff" }.keySet().toList()
+        assert bulbs && plugs
+        app.mainPage()
+        assert !app.declaredInputs.containsKey("btnPowerUp"), "no behaviour picked: no button"
+        app.settings.powerUpBehavior = "off"
+        app.mainPage()
+        assert app.declaredInputs.containsKey("btnPowerUp")
+        int before = puts(b).size()
+        app.appButtonHandler("btnPowerUp"); app.mainPage()
+        List sent = []
+        for (int i = 0; i < 30 && sent.size() < bulbs.size(); i++) {
+            hub.advance(200); b.pump()
+            puts(b).drop(before + sent.size()).each { sent << it[2]; ack(b) }
+        }
+        assert sent*.path.sort() == bulbs.collect { "/clip/v2/resource/light/${it}".toString() }.sort(), "bulbs only by default, not the plug"
+        assert sent.every { it.body == [powerup: [preset: "custom", on: [mode: "on", on: [on: false]]]] }
+        assert app.state.powerUpResult.contains("Stay off") && app.state.powerUpResult.contains("${bulbs.size()} lights")
+        app.settings.powerUpKinds = ["onoff"]
+        app.settings.selectedLights = []        // none added, and only added lights are targeted...
+        app.appButtonHandler("btnPowerUp"); app.mainPage()
+        assert app.state.powerUpResult.startsWith("Nothing sent")
+        int quiet = puts(b).size()
+        hub.advance(1000); b.pump()
+        assert puts(b).size() == quiet
+        app.settings.powerUpScope = "all"       // ...until all lights on the bridge are
+        app.appButtonHandler("btnPowerUp"); app.mainPage()
+        hub.advance(1000); b.pump()
+        assert puts(b).last()[2].path == "/clip/v2/resource/light/${plugs[0]}"
+        assert app.state.powerUpResult.contains("${plugs.size()}")
+    } finally {
+        real.each { it.remove("powerup") }
+    }
+}
+
+check("relabel: the button puts every device's label back to its Hue name") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    lightOf(app, 101).label = "Custom"
+    deviceOf(app, 401).label = "Lounge"
+    deviceOf(app, 501).label = "Whatever"
+    app.appButtonHandler("btnRelabel"); app.mainPage()
+    assert lightOf(app, 101).label == "Living Lamp" && deviceOf(app, 401).label == "Living Room" && deviceOf(app, 501).label == "Relax (Living Room)"
+    assert app.state.relabelResult == "Relabelled 3 devices."
+    assert bridgeOf(app).label.startsWith("Hue Bridge"), "the bridge device is not renamed"
+    app.appButtonHandler("btnRelabel"); app.mainPage()
+    assert app.state.relabelResult == "Every device already matches the Hue app."
+}
+
 Check.finish()

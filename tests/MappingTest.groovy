@@ -336,4 +336,19 @@ check("colour temperature ramp: warmer is more mirek, over the light's own range
     assert app.lightCommand("startColorTemperatureChange", ["up"], ct, [:], null) == null && app.lightCommand("startColorTemperatureChange", [null], ct, [:], null) == null
 }
 
+check("bulk power-up: the lights of the picked types that offer it, all on the bridge or only those added") {
+    Map lights = [a: [name: "Bulb", kind: "color", powerUp: true], b: [name: "Ambiance", kind: "ct", powerUp: true], c: [name: "White", kind: "dim", powerUp: true],
+                  d: [name: "Plug", kind: "onoff", powerUp: true], e: [name: "Old", kind: "color"], f: [name: "Aaa", kind: "color", powerUp: true]]
+    assert app.powerUpTargets(lights, ["color", "ct", "dim"], true, []) == ["f", "b", "a", "c"], "by name, only lights that offer it, no plug"
+    assert app.powerUpTargets(lights, ["onoff"], true, []) == ["d"] && app.powerUpTargets(lights, [], true, []) == []
+    assert app.powerUpTargets(lights, ["color", "ct", "dim", "onoff"], false, ["a", "d", "e", "zzz"]) == ["a", "d"], "added only; e doesn't offer it"
+    assert app.powerUpTargets([:], ["color"], true, []) == []
+}
+
+check("relabel: a device's label is its name in the Hue app, scenes with their room") {
+    Map res = [lights: [L: [name: "Lamp"]], groups: [G: [name: "Living"]], scenes: [S: [name: "Relax", room: "Living"], T: [name: "Solo", room: ""]], sensors: [D: [name: "Motion"]]]
+    assert ["L", "G", "S", "T", "D"].collect { app.hueLabel(it, res) } == ["Lamp", "Living", "Relax (Living)", "Solo", "Motion"]
+    assert app.hueLabel("nope", res) == null && app.hueLabel("L", [:]) == null && app.hueLabel("L", null) == null
+}
+
 Check.finish()

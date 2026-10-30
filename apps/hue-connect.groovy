@@ -27,6 +27,10 @@ import java.util.concurrent.ConcurrentHashMap
 @Field static final long CLOUD_DISCOVERY_MIN_MS = 15 * 60 * 1000L
 @Field static final String DRIVER_BRIDGE = "Hue Bridge"
 @Field static final Map LIGHT_DRIVERS = [color: "Hue Color Light", ct: "Hue White Ambiance Light", dim: "Hue White Light", onoff: "Hue Plug"]
+@Field static final Map POWER_UP_KINDS = [color: "Colour lights", ct: "White ambiance lights", dim: "White lights", onoff: "Plugs and relays"]
+@Field static final List POWER_UP_BULBS = ["color", "ct", "dim"]   // the default pick: plugs and relays are chosen on purpose
+@Field static final Map POWER_UP_CHOICES = [previous: "Back to how they were", lastOnState: "On, as they were when last on",
+                                           safety: "On at warm white (Hue's safety)", off: "Stay off"]
 @Field static final String DRIVER_GROUP = "Hue Group"
 @Field static final Map SENSOR_KINDS_TEXT = [button: "remote", motion: "motion sensor", contact: "contact sensor"]
 @Field static final String DRIVER_SCENE = "Hue Scene"
@@ -150,9 +154,29 @@ def mainPage() {
                         options: sensors.collectEntries { rid, d -> [(rid): "${d.name} (${SENSOR_KINDS_TEXT[d.kind]})"] }.sort { it.value }
                 }
             }
+            section("Power-up behaviour (after a power cut)") {
+                Map lights = (res().lights ?: [:]) as Map
+                paragraph "Choose what lights do when power returns, for the types you pick. The setting is stored in each light, so it applies even when Hubitat is off."
+                input "powerUpBehavior", "enum", title: "When power returns, lights should be", options: POWER_UP_CHOICES, required: false, submitOnChange: true
+                input "powerUpKinds", "enum", title: "Light types", multiple: true, options: POWER_UP_KINDS, defaultValue: POWER_UP_BULBS, submitOnChange: true
+                input "powerUpScope", "enum", title: "Which lights", options: [added: "Lights added to Hubitat", all: "All lights on the bridge"],
+                    defaultValue: "added", submitOnChange: true
+                List targets = powerUpTargets(lights, powerUpKindsPicked(), settings.powerUpScope == "all", (settings.selectedLights ?: []) as List)
+                if (settings.powerUpBehavior && targets) {
+                    if (settings.powerUpBehavior == "off") {
+                        paragraph "<small>A light that powers up off also stays off when a wall switch is flipped. Turn it on from an app, a remote or Hubitat.</small>"
+                    }
+                    input "btnPowerUp", "button", title: "Set ${targets.size()} ${targets.size() == 1 ? 'light' : 'lights'}: ${POWER_UP_CHOICES[settings.powerUpBehavior]}"
+                } else if (settings.powerUpBehavior) {
+                    paragraph "No lights match those types and that choice of lights."
+                }
+                if (state.powerUpResult) paragraph "<small>${state.powerUpResult}</small>"
+            }
             section("Options") {
                 input "syncNames", "bool", title: "Rename devices when they are renamed in the Hue app", defaultValue: true
                 input "logEnable", "bool", title: "Debug logging", defaultValue: false
+                input "btnRelabel", "button", title: "Relabel devices to match the Hue app"
+                paragraph "<small>Replaces any label you set in Hubitat. ${state.relabelResult ?: ''}</small>"
             }
         }
     }
@@ -164,6 +188,8 @@ private void handlePendingButton() {
     String btn = state.remove("pendingButton")
     if (btn == "btnSearch") discover()
     else if (btn == "btnLink") startLink()
+    else if (btn == "btnPowerUp") applyPowerUp()
+    else if (btn == "btnRelabel") relabelAll()
     else if (btn == "btnRelink") {
         // Same bridge, new key: devices stay. The page shows the Link section until it's done.
         rememberFound([id: state.bridge.id, ip: state.bridge.ip, name: state.bridge.name])
@@ -530,6 +556,52 @@ private boolean syncDevices() {
         deleteChildDevice(it.deviceNetworkId)
     }
     return added
+}
+
+/** The light types picked for the power-up change; the bulbs unless the user chose. */
+private List powerUpKindsPicked() { ((settings.powerUpKinds ?: POWER_UP_BULBS) as List) }
+
+/** Set the chosen power-up behaviour on every matching light: one PUT each, paced by the Hue Bridge device's queue. */
+private void applyPowerUp() {
+    String behavior = settings.powerUpBehavior as String
+    Map body = powerUpBody(behavior)
+    List rids = powerUpTargets((res().lights ?: [:]) as Map, powerUpKindsPicked(), settings.powerUpScope == "all", (settings.selectedLights ?: []) as List)
+    if (!body || !rids) {
+        state.powerUpResult = "Nothing sent: pick a behaviour and at least one light type."
+        return
+    }
+    rids.each { String rid -> bridgeDevice()?.enqueue("light", rid, body) }
+    state.powerUpResult = "Sent \"${POWER_UP_CHOICES[behavior]}\" to ${rids.size()} ${rids.size() == 1 ? 'light' : 'lights'}."
+    log.info "Hue Connect: power-up set to ${behavior} on ${rids.size()} lights"
+}
+
+/** The lights a power-up change would reach: those that offer it, of the picked types, and added to Hubitat unless "all". */
+static List powerUpTargets(Map lights, List kinds, boolean allOnBridge, List added) {
+    lights.findAll { rid, l -> l.powerUp && l.kind in kinds && (allOnBridge || rid in added) }.keySet().sort { lights[it].name }.toList()
+}
+
+/** Put every device's label back to its name in the Hue app (for labels set before names followed Hue, or changed in Hubitat). */
+private void relabelAll() {
+    Map r = res()
+    int changed = 0
+    getChildDevices().each { cd ->
+        String rid = ridOf(cd.deviceNetworkId as String)
+        String label = rid ? hueLabel(rid, r) : null
+        if (label && cd.label != label) {
+            cd.setLabel(label)
+            changed++
+        }
+    }
+    state.relabelResult = changed ? "Relabelled ${changed} ${changed == 1 ? 'device' : 'devices'}." : "Every device already matches the Hue app."
+}
+
+/** A device's label as the Hue app names it: a light, group, scene (with its room) or remote or sensor; null if unknown. */
+static String hueLabel(String rid, Map res) {
+    Map r = res ?: [:]
+    if (r.lights?.get(rid)) return r.lights[rid].name
+    if (r.groups?.get(rid)) return r.groups[rid].name
+    if (r.scenes?.get(rid)) return sceneLabel(r.scenes[rid] as Map)
+    return r.sensors?.get(rid)?.name
 }
 
 /**
