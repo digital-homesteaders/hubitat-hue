@@ -111,6 +111,41 @@ check("lights: commands stay inside what each light reports, with on only for a 
     }
 }
 
+check("power-up: every real light offers it, reports a preset the driver can show, and can be set to each behaviour") {
+    Map shown = [:]
+    lights.each { Map l ->
+        Map info = infoOf(l)
+        assert info.powerUp == true, l.metadata.name
+        String now = named(app.lightEvents(l, info) as List).powerUp
+        assert now in ["previous", "lastOnState", "safety", "off", "custom"], "${l.metadata.name}: ${l.powerup}"
+        shown[now] = (shown[now] ?: 0) + 1
+        ["previous", "lastOnState", "safety", "off"].each { String b ->
+            Map body = app.lightCommand("setPowerUp", [b], info, [switch: "off"], 400)
+            assert body.keySet() == ["powerup"] as Set && app.powerUpName(body.powerup as Map) == b, "${l.metadata.name} ${b}"
+        }
+    }
+    assert shown == [previous: 50, safety: 11], "the bridge's lights as dumped: ${shown}"
+}
+
+check("scene speed: dynamic scenes show a whole percentage, static scenes and smart scenes show none") {
+    List<Map> scenes = ofType("scene")
+    int dynamic = 0
+    scenes.each { Map s ->
+        boolean isDynamic = s.palette?.color ? true : false
+        List ev = app.sceneEvents(s, [dynamic: isDynamic]) as List
+        Map speed = ev.find { it.name == "speed" }
+        if (isDynamic) {
+            dynamic++
+            assert speed && speed.value instanceof Integer && speed.value >= 0 && speed.value <= 100, s.metadata.name
+            assert Math.abs(app.speedFromPercent(speed.value) - (s.speed as double)) <= 0.0051d, s.metadata.name   // a whole percent
+        } else {
+            assert speed == null, s.metadata.name
+        }
+    }
+    assert dynamic == 17
+    ofType("smart_scene").each { Map s -> assert !app.sceneEvents(s, [dynamic: true]).any { it.name == "speed" }, s.metadata.name }
+}
+
 check("lights: every light's effect, timed effect and signal lists come from the light, not the model") {
     Map byModel = [:]
     lights.each { Map l ->

@@ -263,4 +263,38 @@ check("motion sensor: detection on/off and sensitivity as events") {
     assert info.motion == rid(751) && info.sensitivityMax == 4
 }
 
+check("power-up: Hue's presets named for the driver, built back into a PUT body, only for lights that offer it") {
+    assert app.powerUpName([preset: "powerfail"]) == "previous" && app.powerUpName([preset: "last_on_state"]) == "lastOnState"
+    assert app.powerUpName([preset: "safety"]) == "safety" && app.powerUpName([preset: "surprise"]) == "custom"
+    assert app.powerUpName([preset: "custom", on: [mode: "on", on: [on: false]]]) == "off"
+    assert app.powerUpName([preset: "custom", on: [mode: "on", on: [on: true]]]) == "custom"
+    assert app.powerUpName([preset: "custom", on: [mode: "previous"]]) == "custom"
+    assert app.powerUpBody("previous") == [powerup: [preset: "powerfail"]]
+    assert app.powerUpBody("lastOnState") == [powerup: [preset: "last_on_state"]]
+    assert app.powerUpBody("safety") == [powerup: [preset: "safety"]]
+    assert app.powerUpBody("off") == [powerup: [preset: "custom", on: [mode: "on", on: [on: false]]]]
+    assert app.powerUpBody("custom") == null && app.powerUpBody("nonsense") == null && app.powerUpBody(null) == null
+    ["previous", "lastOnState", "safety", "off"].each { assert app.powerUpName(app.powerUpBody(it).powerup as Map) == it }
+    Map light = [id: "x", type: "light", on: [on: true], powerup: [preset: "powerfail", configured: true, on: [mode: "previous"]]]
+    Map info = app.lightInfo(light, null)
+    assert info.powerUp == true && !app.lightInfo([id: "y", type: "light", on: [on: true]], null).containsKey("powerUp")
+    assert app.lightEvents(light, info).find { it.name == "powerUp" }.value == "previous"
+    assert app.lightEvents([id: "x", powerup: [preset: "safety"]], info) == [[name: "powerUp", value: "safety"]]
+    assert app.lightCommand("setPowerUp", ["off"], info, [switch: "on"], 400) == [powerup: [preset: "custom", on: [mode: "on", on: [on: false]]]]
+    assert app.lightCommand("setPowerUp", ["custom"], info, [switch: "on"], 400) == null
+    assert app.lightCommand("setPowerUp", ["off"], [kind: "dim"], [switch: "on"], 400) == null
+}
+
+check("scene speed: Hue's 0-1 as a percentage on dynamic scenes only, and back for the PUT") {
+    Map dyn = [dynamic: true], plain = [dynamic: false]
+    Map fire = [type: "scene", status: [active: "static"], speed: 0.4d]
+    assert app.sceneEvents(fire, dyn) == [[name: "switch", value: "on"], [name: "speed", value: 40, unit: "%"]]
+    assert app.sceneEvents(fire, plain) == [[name: "switch", value: "on"]] && app.sceneEvents(fire) == [[name: "switch", value: "on"]]
+    assert app.sceneEvents([type: "scene", speed: 0.7d], dyn) == [[name: "speed", value: 70, unit: "%"]]   // an update with only the speed
+    assert app.sceneEvents([type: "smart_scene", state: "active", speed: 0.5d], dyn) == [[name: "switch", value: "on"]]
+    assert app.speedPercent(0.603d) == 60 && app.speedPercent(0) == 0 && app.speedPercent(1) == 100 && app.speedPercent(1.4d) == 100
+    assert app.speedFromPercent(40) == 0.4d && app.speedFromPercent(100) == 1d && app.speedFromPercent(33.33d) == 0.333d
+    assert app.speedFromPercent(150) == 1d && app.speedFromPercent(-5) == 0d
+}
+
 Check.finish()

@@ -843,4 +843,53 @@ check("motion sensor: turning detection off and setting sensitivity PUT on its m
     assert puts(b).last()[2].body == [sensitivity: [sensitivity: 4]]
 }
 
+// ---------------------------------------------------------------- phase 5: power-up and scene speed
+
+check("power-up: the light shows what it does after an outage; setPowerUp is one PUT with only the preset") {
+    Map light = fixture.data.find { it.id == rid(102) }
+    light.powerup = [preset: "safety", configured: true, on: [mode: "on", on: [on: true]]]
+    try {
+        Hub hub = new Hub(root)
+        HubitatScript app = linked(hub)
+        app.refreshAllDone(resp(200, fixture), [:])
+        hub.settle()
+        FakeDevice b = bridgeOf(app)
+        started(hub, b)
+        assert lightOf(app, 102).current.powerUp == "safety"
+        assert lightOf(app, 101).current.powerUp == null, "a light without the setting shows nothing"
+        lightOf(app, 102).setPowerUp("off")
+        assert puts(b).last()[2].path == "/clip/v2/resource/light/${rid(102)}"
+        assert puts(b).last()[2].body == [powerup: [preset: "custom", on: [mode: "on", on: [on: false]]]], "no transition time, no on"
+        b.parse(sse("60:0", [[type: "update", data: [[id: rid(102), type: "light", powerup: [preset: "custom", on: [mode: "on", on: [on: false]]]]]]]))
+        hub.settle()
+        assert lightOf(app, 102).current.powerUp == "off"
+        int sent = puts(b).size()
+        lightOf(app, 101).setPowerUp("off")
+        hub.advance(1000); b.pump()
+        assert puts(b).size() == sent, "a light that doesn't offer power-up sends nothing"
+    } finally {
+        light.remove("powerup")
+    }
+}
+
+check("scene speed: a dynamic scene shows and sets its palette speed; others refuse") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    assert deviceOf(app, 504).current.speed == 40 && deviceOf(app, 501).current.speed == null, "only the scene with a palette has a speed"
+    b.parse(sse("61:0", [[type: "update", data: [[id: rid(504), type: "scene", speed: 0.8d]]]]))
+    hub.settle()
+    assert deviceOf(app, 504).current.speed == 80
+    assert deviceOf(app, 401).current.effectName != "Fireplace", "a speed change alone doesn't move the room's effect"
+    deviceOf(app, 504).setSpeed(25)
+    assert puts(b).last()[2].path == "/clip/v2/resource/scene/${rid(504)}" && puts(b).last()[2].body == [speed: 0.25d]
+    ack(b)
+    int sent = puts(b).size()
+    deviceOf(app, 501).setSpeed(25)
+    deviceOf(app, 601).setSpeed(25)
+    hub.advance(1000); b.pump()
+    assert puts(b).size() == sent, "a static scene and a smart scene have no speed to set"
+}
+
 Check.finish()

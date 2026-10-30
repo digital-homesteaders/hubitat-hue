@@ -16,6 +16,15 @@
   previous; `effectName` follows the Hue app), Flash (Hue's signaling for the
   chosen seconds, else a breathe alert), Identify, sunrise/sunset timed effects
   up to 6 hours, and `hueMode` (normal or streaming).
+- **Power-up behaviour:** every light and plug shows `powerUp` (previous,
+  lastOnState, safety, off or custom) and **Set Power Up** changes it, so a
+  light can stay off after an outage. It sends only the preset, and only to
+  lights that report the setting.
+- **Scene speed:** a scene with a palette shows `speed` (0-100 %) and **Set
+  Speed** changes how fast it plays. Static scenes and smart scenes have none.
+- **Real-bridge tests:** `tests/fixtures/resources-real.json` is a scrubbed,
+  thinned dump of a real bridge and `tests/RealBridgeTest.groovy` runs every
+  resource in it through the mapping. `scrub-dump.py` cleans a new dump.
 - **Motion sensors:** enable or disable motion detection and set sensitivity;
   `motionDetection` and `sensitivity` attributes.
 - **Device details:** model, product name and firmware as device data values.

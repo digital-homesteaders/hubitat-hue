@@ -454,6 +454,7 @@ static Map lightInfo(Map l, Map device) {
     List timed = ((l.timed_effects?.effect_values ?: []) as List) - "no_effect"
     if (timed) info.timedEffects = timed
     if (l.signaling?.signal_values) info.signals = l.signaling.signal_values
+    if (l.powerup instanceof Map) info.powerUp = true
     if (l.color) info.gamut = gamutFor(l.color as Map)
     Map schema = l.color_temperature?.mirek_schema as Map
     if (schema) { info.mirekMin = schema.mirek_minimum; info.mirekMax = schema.mirek_maximum }
@@ -532,12 +533,13 @@ void hueEvents(String type, List items) {
                 break
             case "scene":
             case "smart_scene":
-                List ev = sceneEvents(item)
+                Map sc = res().scenes?.get(item.id) as Map
+                List ev = sceneEvents(item, sc ?: [:])
                 if (!ev) break
                 getChildDevice(dni(item.id as String))?.parse(ev)
-                Map sc = res().scenes?.get(item.id) as Map
-                def g = sc?.groupedLight ? getChildDevice(dni(sc.groupedLight as String)) : null
-                if (g) g.parse(effectNameEvents(sc.name as String, ev[0].value == "on", g.currentValue("effectName") as String))
+                Map sw = ev.find { it.name == "switch" } as Map
+                def g = sw && sc?.groupedLight ? getChildDevice(dni(sc.groupedLight as String)) : null
+                if (g) g.parse(effectNameEvents(sc.name as String, sw.value == "on", g.currentValue("effectName") as String))
                 break
             case "zigbee_connectivity":
             case "zgp_connectivity":
@@ -592,6 +594,7 @@ static List lightEvents(Map item, Map info) {
     }
     def effect = item.effects_v2?.status?.effect ?: item.effects?.status
     if (effect != null) ev << [name: "effectName", value: effect == "no_effect" ? "none" : effect]
+    if (item.powerup instanceof Map && item.powerup.preset) ev << [name: "powerUp", value: powerUpName(item.powerup as Map)]
     if (item.mode != null) ev << [name: "hueMode", value: item.mode]   // "streaming" while an entertainment session runs
     if (!ctNow && info.kind == "color" && item.color?.xy?.x != null) {
         List hs = xyToHueSat(item.color.xy.x as double, item.color.xy.y as double)
@@ -673,11 +676,48 @@ static List groupEvents(Map item) {
     return ev
 }
 
-/** A scene (status.active: inactive | static | dynamic_palette) or smart scene (state: active | inactive) as a switch. */
-static List sceneEvents(Map item) {
+/**
+ * A scene (status.active: inactive | static | dynamic_palette) or smart scene (state: active | inactive) as a switch, and
+ * a dynamic scene's palette speed (0-1 on the bridge) as a percentage. A scene's info says whether it is dynamic; an
+ * update carries only what changed, so a speed alone is a valid event list.
+ */
+static List sceneEvents(Map item, Map info = [:]) {
+    List ev = []
     def active = item.type == "smart_scene" ? item.state : item.status?.active
-    if (active == null) return []
-    return [[name: "switch", value: active in ["inactive"] ? "off" : "on"]]
+    if (active != null) ev << [name: "switch", value: active in ["inactive"] ? "off" : "on"]
+    if (item.type == "scene" && info.dynamic && item.speed != null) ev << [name: "speed", value: speedPercent(item.speed), unit: "%"]
+    return ev
+}
+
+/** A dynamic scene's palette speed: Hue's 0-1 as a whole percentage, and back (clamped, to three places). */
+static int speedPercent(def speed) { Math.max(0, Math.min(100, Math.round((speed as double) * 100) as int)) }
+static double speedFromPercent(def percent) { Math.round(Math.max(0d, Math.min(100d, percent as double)) * 10) / 1000d }
+
+/**
+ * What a light does when power returns, as Hue's presets name it: previous (powerfail: back to the state before the
+ * outage), lastOnState, safety (on at a warm white), off (a custom preset that stays off), else custom.
+ */
+static String powerUpName(Map powerup) {
+    switch (powerup.preset) {
+        case "powerfail": return "previous"
+        case "last_on_state": return "lastOnState"
+        case "safety": return "safety"
+        case "custom":
+            Map on = (powerup.on ?: [:]) as Map
+            return on.mode == "on" && on.on instanceof Map && on.on.on == false ? "off" : "custom"
+    }
+    return "custom"
+}
+
+/** The PUT body for a power-up behaviour from powerUpName's list, or null for anything else ("custom" can't be built blind). */
+static Map powerUpBody(String behavior) {
+    switch (behavior) {
+        case "previous": return [powerup: [preset: "powerfail"]]
+        case "lastOnState": return [powerup: [preset: "last_on_state"]]
+        case "safety": return [powerup: [preset: "safety"]]
+        case "off": return [powerup: [preset: "custom", on: [mode: "on", on: [on: false]]]]
+    }
+    return null
 }
 
 /** The group's effectName follows its scenes: the one just recalled, or "none" when the one shown is no longer active. */
@@ -771,6 +811,17 @@ void hueSceneCommand(cd, String command, boolean dynamic = false) {
     }
 }
 
+/** A dynamic scene's palette speed, 0-100 %. Smart scenes and scenes without a palette have none. */
+void hueSceneSpeed(cd, def percent) {
+    String rid = ridOf(cd.deviceNetworkId as String)
+    Map sc = (res().scenes?.get(rid) ?: [:]) as Map
+    if (sc.smart || !sc.dynamic) {
+        log.warn "${cd.displayName}: only a scene with a palette has a speed"
+        return
+    }
+    bridgeDevice()?.enqueue("scene", rid, [speed: speedFromPercent(percent)])
+}
+
 /**
  * The PUT body for a light command, or null if there's nothing to send. Only what changes is sent: one property is one
  * Zigbee message (Hue performance guide), so `on` is added only for a light that isn't on (an off light ignores other
@@ -832,6 +883,8 @@ static Map lightCommand(String command, List args, Map info, Map current, Intege
             return ("on_off" in ((info.signals ?: []) as List)) ? [signaling: [signal: "on_off", duration: ms]] : [alert: [action: "breathe"]]
         case "identify":
             return [identify: [action: "identify"]]
+        case "setPowerUp":
+            return info.powerUp ? powerUpBody(args[0] as String) : null
         case "startTimedEffect":
             String e = args[0] as String
             if (!(e in ((info.timedEffects ?: []) as List))) return null
