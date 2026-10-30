@@ -21,6 +21,8 @@ metadata {
         capability "Switch"
         capability "PushableButton"
         capability "Refresh"
+        attribute "speed", "number"
+        command "setSpeed", [[name: "Speed*", type: "NUMBER", description: "0-100 %, for a scene with a palette"]]
     }
     preferences {
         input "dynamic", "bool", title: "Play dynamically (scenes with a palette)", defaultValue: false
@@ -35,7 +37,8 @@ void updated() { }
 void parse(List<Map> events) {
     events.each { Map e ->
         if (txtEnable && device.currentValue(e.name as String)?.toString() != e.value?.toString()) {
-            log.info "${device.displayName} is ${e.value == 'on' ? 'active' : 'not active'}"
+            if (e.name == "switch") log.info "${device.displayName} is ${e.value == 'on' ? 'active' : 'not active'}"
+            else log.info "${device.displayName} ${e.name} is ${e.value}${e.unit ?: ''}"
         }
         sendEvent(e)
     }
@@ -48,3 +51,5 @@ void push(buttonNumber = 1) {
 void on() { parent?.hueSceneCommand(device, "on", settings.dynamic == true) }
 void off() { parent?.hueSceneCommand(device, "off") }
 void refresh() { parent?.hueSceneCommand(device, "refresh") }
+/** How fast a dynamic scene plays its palette (0-100 %). Only scenes with a palette have one. */
+void setSpeed(speed) { parent?.hueSceneSpeed(device, speed) }

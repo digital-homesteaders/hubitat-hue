@@ -32,6 +32,9 @@ metadata {
         command "identify"
         command "startTimedEffect", [[name: "Effect*", type: "ENUM", constraints: ["sunrise", "sunset"]],
                                      [name: "Minutes", type: "NUMBER", description: "1-360, default 30"]]
+        attribute "powerUp", "enum", ["previous", "lastOnState", "safety", "off", "custom"]
+        command "setPowerUp", [[name: "Behavior*", type: "ENUM", constraints: ["previous", "lastOnState", "safety", "off"],
+                                description: "What the light does when power returns"]]
         attribute "healthStatus", "enum", ["online", "offline"]
     }
     preferences {
@@ -79,3 +82,5 @@ void setNextEffect() { toHue("setNextEffect") }
 void setPreviousEffect() { toHue("setPreviousEffect") }
 /** Sunrise or sunset, run by the light itself over the given minutes (only if the light offers it). */
 void startTimedEffect(String effect, minutes = 30) { toHue("startTimedEffect", [effect, minutes]) }
+/** What this light does when power returns: previous state, last on state, safety (warm white) or off. */
+void setPowerUp(String behavior) { toHue("setPowerUp", [behavior]) }

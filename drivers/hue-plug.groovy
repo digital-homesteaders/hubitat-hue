@@ -21,6 +21,9 @@ metadata {
         capability "Outlet"
         capability "Switch"
         capability "Refresh"
+        attribute "powerUp", "enum", ["previous", "lastOnState", "safety", "off", "custom"]
+        command "setPowerUp", [[name: "Behavior*", type: "ENUM", constraints: ["previous", "lastOnState", "safety", "off"],
+                                description: "What the light does when power returns"]]
         attribute "healthStatus", "enum", ["online", "offline"]
     }
     preferences {
@@ -46,3 +49,5 @@ private void toHue(String command, List args = []) { parent?.hueLightCommand(dev
 void on() { toHue("on") }
 void off() { toHue("off") }
 void refresh() { toHue("refresh") }
+/** What this light does when power returns: previous state, last on state, safety (warm white) or off. */
+void setPowerUp(String behavior) { toHue("setPowerUp", [behavior]) }

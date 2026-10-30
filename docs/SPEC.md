@@ -114,11 +114,13 @@ the linked one: offline, and rediscovery starts.
 | light `identify` | `identify()` |
 | light `timed_effects` sunrise / sunset, duration up to 6 h | `startTimedEffect(effect, minutes)` |
 | light `mode` normal / streaming | `hueMode` |
+| light `powerup` preset powerfail / last_on_state / safety / custom (on = false) | `powerUp` previous / lastOnState / safety / off (other custom: `custom`); `setPowerUp(behavior)` sends only the preset |
 | device `product_data` model_id, product_name, software_version | data values `model`, `productName`, `firmware` |
 | `dimming_delta` | `startLevelChange` / `stopLevelChange` |
 | zigbee_connectivity `status` | `healthStatus` (online when `connected`) |
 | grouped_light `on` (any light on), `dimming` (average of lights on) | the Hue Group's `switch`, `level` |
 | scene `recall.action` active / dynamic_palette; smart_scene `recall.action` activate | Hue Scene `push()` / `on()` |
+| scene `speed` (0-1, scenes with a palette) | Hue Scene `speed` 0-100 %, `setSpeed(percent)` |
 | motion `motion_report.motion`, `enabled`, `sensitivity` | `motion`, `motionDetection`, `sensitivity`; enable/disableMotionDetection, setSensitivity |
 | light_level `light_level_report.light_level` | `illuminance` lux = 10^((v - 1) / 10000) |
 | temperature `temperature_report.temperature` (°C) | `temperature` in the hub's scale |
@@ -172,6 +174,8 @@ Checked 2026-10-23 against every "should/must/avoid/recommend" in `docs/hue-api/
 3. **Sensors and buttons:** Hue Motion Sensor, Hue Contact Sensor, Hue Button.
 4. **Polish:** effects, flash, identify, timed effects, hueMode, motion
    settings, device details, release script and package check, CI.
+5. **Power-up and scene speed:** a light's `powerup` behaviour and a dynamic
+   scene's palette `speed`, tested against a scrubbed dump of a real bridge.
 
 Each phase: tests under Groovy 2.4 (pure mapping, flows against a fake bridge,
 fixtures from a real bridge), then Doug's hub, then the next phase.

@@ -15,6 +15,8 @@ Hue Connect listens to the bridge's live event stream instead of polling it.
   what each light offers: effects (candle, fire, sparkle ...), **Flash**,
   **Identify**, and sunrise/sunset over up to 6 hours (**Start Timed Effect**).
   `hueMode` shows `streaming` while an Entertainment app drives the light.
+  `powerUp` shows what the light does when power returns, and **Set Power Up**
+  changes it (previous state, last on state, safety or off).
   Model, product name and firmware are in each device's data.
 - **Rooms and zones:** a Hue Group device per room or zone (and one for all
   lights) changes every light together in one command, the way the Hue app
