@@ -161,7 +161,7 @@ def mainPage() {
                 input "powerUpKinds", "enum", title: "Light types", multiple: true, options: POWER_UP_KINDS, defaultValue: POWER_UP_BULBS, submitOnChange: true
                 input "powerUpScope", "enum", title: "Which lights", options: [added: "Lights added to Hubitat", all: "All lights on the bridge"],
                     defaultValue: "added", submitOnChange: true
-                List targets = powerUpTargets(lights, powerUpKindsPicked(), settings.powerUpScope == "all", (settings.selectedLights ?: []) as List)
+                List targets = powerUpTargets(lights, powerUpKindsPicked(), settings.powerUpScope == "all", addedRids())
                 if (settings.powerUpBehavior && targets) {
                     if (settings.powerUpBehavior == "off") {
                         paragraph "<small>A light that powers up off also stays off when a wall switch is flipped. Turn it on from an app, a remote or Hubitat.</small>"
@@ -558,6 +558,9 @@ private boolean syncDevices() {
     return added
 }
 
+/** The Hue resource ids of this app's Hubitat devices (a selected light whose driver isn't installed has none). */
+private List addedRids() { getChildDevices().collect { ridOf(it.deviceNetworkId as String) }.findAll { it } }
+
 /** The light types picked for the power-up change; the bulbs unless the user chose. */
 private List powerUpKindsPicked() { ((settings.powerUpKinds ?: POWER_UP_BULBS) as List) }
 
@@ -565,7 +568,11 @@ private List powerUpKindsPicked() { ((settings.powerUpKinds ?: POWER_UP_BULBS) a
 private void applyPowerUp() {
     String behavior = settings.powerUpBehavior as String
     Map body = powerUpBody(behavior)
-    List rids = powerUpTargets((res().lights ?: [:]) as Map, powerUpKindsPicked(), settings.powerUpScope == "all", (settings.selectedLights ?: []) as List)
+    if (!res().lights) {
+        state.powerUpResult = "Still reading the bridge. Try again in a moment."
+        return
+    }
+    List rids = powerUpTargets(res().lights as Map, powerUpKindsPicked(), settings.powerUpScope == "all", addedRids())
     if (!body || !rids) {
         state.powerUpResult = "Nothing sent: pick a behaviour and at least one light type."
         return
@@ -583,6 +590,10 @@ static List powerUpTargets(Map lights, List kinds, boolean allOnBridge, List add
 /** Put every device's label back to its name in the Hue app (for labels set before names followed Hue, or changed in Hubitat). */
 private void relabelAll() {
     Map r = res()
+    if (!r.lights) {
+        state.relabelResult = "Still reading the bridge. Try again in a moment."
+        return
+    }
     int changed = 0
     getChildDevices().each { cd ->
         String rid = ridOf(cd.deviceNetworkId as String)
@@ -614,10 +625,12 @@ private void applyRenames(Map item) {
     List changes = renamed(item, r)
     changes.each { Map c ->
         Map info = (r[c.section] as Map)[c.rid] as Map
+        String was = c.section == "scenes" ? sceneLabel(info) : info.name
         info.putAll(c.set as Map)
         def cd = getChildDevice(dni(c.rid as String))
         String label = c.section == "scenes" ? sceneLabel(info) : info.name
-        if (cd && cd.label != label) {
+        boolean roomOnly = c.section == "scenes" && !c.set.containsKey("name")   // the scene itself wasn't renamed, its room was
+        if (cd && cd.label != label && (!roomOnly || cd.label == was)) {
             log.info "Hue Connect: ${cd.label} is now ${label}"
             cd.setLabel(label)
         }
@@ -657,7 +670,7 @@ static List renamed(Map item, Map res) {
 }
 
 /** True for what Hubitat throws when a driver isn't installed (UnknownDeviceTypeException: "Device type ... not found"). */
-static boolean isMissingDriver(Exception e) { e.class.simpleName == "UnknownDeviceTypeException" || (e.message ?: "").contains("not found") }
+static boolean isMissingDriver(Exception e) { e.class.simpleName == "UnknownDeviceTypeException" || (e.message ?: "") ==~ /(?is).*device type .* not found.*/ }
 
 /** The Hue resource id in one of this bridge's device network ids, or null (e.g. the bridge device itself). */
 private String ridOf(String deviceNetworkId) {

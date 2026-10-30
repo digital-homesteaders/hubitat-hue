@@ -16,8 +16,7 @@ Hue Connect listens to the bridge's live event stream instead of polling it.
   **Identify**, and sunrise/sunset over up to 6 hours (**Start Timed Effect**).
   `hueMode` shows `streaming` while an Entertainment app drives the light.
   `powerUp` shows what the light does when power returns, and **Set Power Up**
-  changes it (previous state, last on state, safety or off). Lights and groups
-  The app's page can set it for many lights at once: pick a behaviour, the
+  changes it (previous state, last on state, safety or off). The app's page can set it for many lights at once: pick a behaviour, the
   light types (bulbs by default; plugs on purpose) and whether to reach only the
   lights added to Hubitat or every light on the bridge. Lights and groups
   with colour temperature also ramp it: **Start Color Temperature Change**
@@ -88,7 +87,8 @@ Then **Apps → Add User App → Hue Connect**:
 
 Names follow the Hue app: rename a light, room, zone, scene or sensor there and
 its Hubitat device is relabelled to match (switch this off under Options). A
-label you set in Hubitat stays until that item is renamed in Hue. **Relabel
+label you set in Hubitat stays until that item is renamed in Hue; a scene's
+label also follows its room's name, unless you changed it. **Relabel
 devices to match the Hue app** (under Options) resets every label at once.
 
 ## Security

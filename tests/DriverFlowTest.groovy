@@ -906,6 +906,7 @@ check("renames: a name changed in the Hue app relabels the device, a room's grou
     app.updated(); app.refreshAllDone(resp(200, fixture), [:]); hub.settle()
     FakeDevice b = bridgeOf(app)
     started(hub, b)
+    deviceOf(app, 502).label = "Movie"          // set in Hubitat: a room rename leaves it, renaming the scene itself doesn't
     assert lightOf(app, 101).label == "Living Lamp" && deviceOf(app, 11).label == "Hall Motion"
     b.parse(sse("70:0", [[type: "update", data: [[id: rid(1), type: "device", metadata: [name: "Reading Lamp"]]]]])); hub.settle()
     assert lightOf(app, 101).label == "Reading Lamp" && app.res().lights[rid(101)].name == "Reading Lamp"
@@ -916,6 +917,9 @@ check("renames: a name changed in the Hue app relabels the device, a room's grou
     b.parse(sse("72:0", [[type: "update", data: [[id: rid(301), type: "room", metadata: [name: "Lounge"]]]]])); hub.settle()
     assert deviceOf(app, 401).label == "Lounge" && deviceOf(app, 501).label == "Relax (Lounge)" && deviceOf(app, 504).label == "Fireplace (Lounge)"
     assert deviceOf(app, 503).label == "Nightlight (Hall)", "another room's scenes keep their label"
+    assert deviceOf(app, 502).label == "Movie", "a label set in Hubitat isn't overwritten by a room rename"
+    b.parse(sse("76:0", [[type: "update", data: [[id: rid(502), type: "scene", metadata: [name: "Focus"]]]]])); hub.settle()
+    assert deviceOf(app, 502).label == "Focus (Lounge)", "renaming the scene itself relabels it"
     b.parse(sse("73:0", [[type: "update", data: [[id: rid(501), type: "scene", metadata: [name: "Unwind"]]]]])); hub.settle()
     assert deviceOf(app, 501).label == "Unwind (Lounge)"
     assert deviceOf(app, 401).current.lightEffects.contains("Unwind") && !deviceOf(app, 401).current.lightEffects.contains("Relax")
@@ -1012,7 +1016,7 @@ check("bulk power-up: the button shows for a behaviour and matching lights; it s
         assert sent.every { it.body == [powerup: [preset: "custom", on: [mode: "on", on: [on: false]]]] }
         assert app.state.powerUpResult.contains("Stay off") && app.state.powerUpResult.contains("${bulbs.size()} lights")
         app.settings.powerUpKinds = ["onoff"]
-        app.settings.selectedLights = []        // none added, and only added lights are targeted...
+        app.deleteChildDevice(app.dni(plugs[0]))   // the plug has no device here, and only lights with a device count as added...
         app.appButtonHandler("btnPowerUp"); app.mainPage()
         assert app.state.powerUpResult.startsWith("Nothing sent")
         int quiet = puts(b).size()
@@ -1023,6 +1027,31 @@ check("bulk power-up: the button shows for a behaviour and matching lights; it s
         hub.advance(1000); b.pump()
         assert puts(b).last()[2].path == "/clip/v2/resource/light/${plugs[0]}"
         assert app.state.powerUpResult.contains("${plugs.size()}")
+    } finally {
+        real.each { it.remove("powerup") }
+    }
+}
+
+check("bulk power-up and relabel: before the bridge has been read they say so, and 'added' means devices that exist") {
+    List real = fixture.data.findAll { it.type == "light" }
+    real.each { it.powerup = [preset: "powerfail", configured: true, on: [mode: "previous"]] }
+    try {
+    Hub hub = new Hub(root)
+    hub.missingDrivers << "Hue Plug"
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    assert lightOf(app, 104) == null, "the plug's driver isn't installed"
+    app.settings.powerUpBehavior = "off"; app.settings.powerUpKinds = ["onoff"]
+    int sent = puts(b).size()
+    app.appButtonHandler("btnPowerUp"); app.mainPage()
+    hub.advance(1000); b.pump()
+    assert app.state.powerUpResult.startsWith("Nothing sent") && puts(b).size() == sent, "a plug that was never added isn't changed"
+    app.getClass().RES.clear()
+    app.appButtonHandler("btnPowerUp"); app.mainPage()
+    assert app.state.powerUpResult == "Still reading the bridge. Try again in a moment."
+    app.appButtonHandler("btnRelabel"); app.mainPage()
+    assert app.state.relabelResult == "Still reading the bridge. Try again in a moment."
     } finally {
         real.each { it.remove("powerup") }
     }

@@ -318,6 +318,7 @@ check("missing drivers: only Hubitat's own 'not found' is taken as a driver that
     assert app.isMissingDriver(new UnknownDeviceTypeException("Device type 'Hue Plug' in namespace 'hue' not found"))
     assert app.isMissingDriver(new RuntimeException("Device type 'Hue Plug' in namespace 'hue' not found"))
     assert !app.isMissingDriver(new IllegalArgumentException("duplicate dni x")) && !app.isMissingDriver(new RuntimeException())
+    assert !app.isMissingDriver(new RuntimeException("Device network id 'hue-1' not found")), "only a device type that isn't installed"
 }
 
 check("colour temperature ramp: warmer is more mirek, over the light's own range, only for lights with colour temperature") {
