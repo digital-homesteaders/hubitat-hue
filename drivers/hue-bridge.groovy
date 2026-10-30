@@ -287,6 +287,8 @@ private static Map merge(Map a, Map b) {
     b.each { k, v -> out[k] = v }
     if (b.containsKey("dimming_delta")) out.remove("dimming")       // a level change replaces a set level
     if (b.containsKey("dimming")) out.remove("dimming_delta")
+    if (b.containsKey("color_temperature_delta")) out.remove("color_temperature")   // likewise for colour temperature
+    if (b.containsKey("color_temperature")) out.remove("color_temperature_delta")
     return out
 }
 

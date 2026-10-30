@@ -297,4 +297,59 @@ check("scene speed: Hue's 0-1 as a percentage on dynamic scenes only, and back f
     assert app.speedFromPercent(150) == 1d && app.speedFromPercent(-5) == 0d
 }
 
+check("renames: what a name change on the bridge changes, and nothing when the name already matches") {
+    Map res = [lights: [L1: [name: "Lamp", device: "D1"], L2: [name: "Other", device: "D2"]],
+               groups: [G1: [name: "Living", owner: "R1"], G2: [name: "Hall", owner: "R2"]],
+               scenes: [S1: [name: "Relax", room: "Living", roomRid: "R1", groupedLight: "G1"], S2: [name: "Night", room: "Hall", roomRid: "R2", groupedLight: "G2"]],
+               sensors: [D9: [name: "Motion"]]]
+    assert app.renamed([type: "light", id: "L1", metadata: [name: "Desk", archetype: "x"]], res) == [], "a light's own name is deprecated; its device's is the name"
+    assert app.renamed([type: "light", id: "L1", on: [on: true]], res) == [] && app.renamed([type: "device", id: "unknown", metadata: [name: "x"]], res) == []
+    assert app.renamed([type: "device", id: "D1", metadata: [name: "Lamp"]], res) == []
+    assert app.renamed([type: "device", id: "D1", metadata: [name: "Desk"]], res) == [[section: "lights", rid: "L1", set: [name: "Desk"]]]
+    assert app.renamed([type: "device", id: "D9", metadata: [name: "Hall Motion"]], res) == [[section: "sensors", rid: "D9", set: [name: "Hall Motion"]]]
+    assert app.renamed([type: "room", id: "R1", metadata: [name: "Lounge"]], res) ==
+        [[section: "groups", rid: "G1", set: [name: "Lounge"]], [section: "scenes", rid: "S1", set: [room: "Lounge"]]]
+    assert app.renamed([type: "zone", id: "R2", metadata: [name: "Hall"]], res) == []
+    assert app.renamed([type: "scene", id: "S2", metadata: [name: "Bedtime"]], res) == [[section: "scenes", rid: "S2", set: [name: "Bedtime"]]]
+    assert app.renamed([type: "smart_scene", id: "S2", metadata: [name: "Night"]], res) == [] && app.renamed([type: "scene", id: "S2"], [:]) == []
+}
+
+check("missing drivers: only Hubitat's own 'not found' is taken as a driver that isn't installed") {
+    assert app.isMissingDriver(new UnknownDeviceTypeException("Device type 'Hue Plug' in namespace 'hue' not found"))
+    assert app.isMissingDriver(new RuntimeException("Device type 'Hue Plug' in namespace 'hue' not found"))
+    assert !app.isMissingDriver(new IllegalArgumentException("duplicate dni x")) && !app.isMissingDriver(new RuntimeException())
+    assert !app.isMissingDriver(new RuntimeException("Device network id 'hue-1' not found")), "only a device type that isn't installed"
+}
+
+check("colour temperature ramp: warmer is more mirek, over the light's own range, only for lights with colour temperature") {
+    Map ct = [kind: "ct", mirekMin: 153, mirekMax: 500]
+    assert app.lightCommand("startColorTemperatureChange", ["warmer"], ct, [switch: "on"], 400) ==
+        [color_temperature_delta: [action: "up", mirek_delta: 347], dynamics: [duration: 4000]]
+    assert app.lightCommand("startColorTemperatureChange", ["cooler"], ct, [switch: "off"], 400).color_temperature_delta.action == "down"
+    assert app.lightCommand("startColorTemperatureChange", ["warmer"], [kind: "color", mirekMin: 200, mirekMax: 454], [:], null).color_temperature_delta.mirek_delta == 254
+    assert app.lightCommand("startColorTemperatureChange", ["warmer"], [kind: "ct", mirekMin: 50, mirekMax: 1000], [:], null).color_temperature_delta.mirek_delta == 950, "Hue's limit"
+    assert app.lightCommand("startColorTemperatureChange", ["warmer"], [kind: "ct"], [:], null).color_temperature_delta.mirek_delta == 347, "no schema: Hue's usual range"
+    assert app.lightCommand("stopColorTemperatureChange", [], ct, [:], 400) == [color_temperature_delta: [action: "stop"]]
+    ["dim", "onoff"].each { String kind ->
+        assert app.lightCommand("startColorTemperatureChange", ["warmer"], [kind: kind], [:], null) == null, kind
+        assert app.lightCommand("stopColorTemperatureChange", [], [kind: kind], [:], null) == null, kind
+    }
+    assert app.lightCommand("startColorTemperatureChange", ["up"], ct, [:], null) == null && app.lightCommand("startColorTemperatureChange", [null], ct, [:], null) == null
+}
+
+check("bulk power-up: the lights of the picked types that offer it, all on the bridge or only those added") {
+    Map lights = [a: [name: "Bulb", kind: "color", powerUp: true], b: [name: "Ambiance", kind: "ct", powerUp: true], c: [name: "White", kind: "dim", powerUp: true],
+                  d: [name: "Plug", kind: "onoff", powerUp: true], e: [name: "Old", kind: "color"], f: [name: "Aaa", kind: "color", powerUp: true]]
+    assert app.powerUpTargets(lights, ["color", "ct", "dim"], true, []) == ["f", "b", "a", "c"], "by name, only lights that offer it, no plug"
+    assert app.powerUpTargets(lights, ["onoff"], true, []) == ["d"] && app.powerUpTargets(lights, [], true, []) == []
+    assert app.powerUpTargets(lights, ["color", "ct", "dim", "onoff"], false, ["a", "d", "e", "zzz"]) == ["a", "d"], "added only; e doesn't offer it"
+    assert app.powerUpTargets([:], ["color"], true, []) == []
+}
+
+check("relabel: a device's label is its name in the Hue app, scenes with their room") {
+    Map res = [lights: [L: [name: "Lamp"]], groups: [G: [name: "Living"]], scenes: [S: [name: "Relax", room: "Living"], T: [name: "Solo", room: ""]], sensors: [D: [name: "Motion"]]]
+    assert ["L", "G", "S", "T", "D"].collect { app.hueLabel(it, res) } == ["Lamp", "Living", "Relax (Living)", "Solo", "Motion"]
+    assert app.hueLabel("nope", res) == null && app.hueLabel("L", [:]) == null && app.hueLabel("L", null) == null
+}
+
 Check.finish()

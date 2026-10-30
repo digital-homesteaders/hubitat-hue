@@ -114,9 +114,12 @@ the linked one: offline, and rediscovery starts.
 | light `identify` | `identify()` |
 | light `timed_effects` sunrise / sunset, duration up to 6 h | `startTimedEffect(effect, minutes)` |
 | light `mode` normal / streaming | `hueMode` |
+| (app page) power-up for many lights | `powerUpTargets`: lights that offer it, of the picked kinds, added or all; one PUT each through the paced queue |
 | light `powerup` preset powerfail / last_on_state / safety / custom (on = false) | `powerUp` previous / lastOnState / safety / off (other custom: `custom`); `setPowerUp(behavior)` sends only the preset |
+| device `metadata.name` (a light's own name is deprecated), room / zone / scene names | the Hubitat device's label, kept in step when renamed in Hue (a room's name is its group's, and part of its scenes' labels) |
 | device `product_data` model_id, product_name, software_version | data values `model`, `productName`, `firmware` |
 | `dimming_delta` | `startLevelChange` / `stopLevelChange` |
+| `color_temperature_delta` (mirek up = warmer) | `startColorTemperatureChange(warmer or cooler)` / `stopColorTemperatureChange` on lights and groups with colour temperature |
 | zigbee_connectivity `status` | `healthStatus` (online when `connected`) |
 | grouped_light `on` (any light on), `dimming` (average of lights on) | the Hue Group's `switch`, `level` |
 | scene `recall.action` active / dynamic_palette; smart_scene `recall.action` activate | Hue Scene `push()` / `on()` |

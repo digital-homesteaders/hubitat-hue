@@ -892,4 +892,183 @@ check("scene speed: a dynamic scene shows and sets its palette speed; others ref
     assert puts(b).size() == sent, "a static scene and a smart scene have no speed to set"
 }
 
+// ---------------------------------------------------------------- renames and drivers that aren't installed
+
+void rename(HubitatScript app, FakeDevice b, int n, Map item) {
+    b.parse(sse("7${n}:0", [[type: "update", data: [item]]]))
+    app.hub.settle()
+}
+
+check("renames: a name changed in the Hue app relabels the device, a room's group and scenes, and the group's effect list") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    app.settings.selectedSensors = [rid(11)]
+    app.updated(); app.refreshAllDone(resp(200, fixture), [:]); hub.settle()
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    deviceOf(app, 502).label = "Movie"          // set in Hubitat: a room rename leaves it, renaming the scene itself doesn't
+    assert lightOf(app, 101).label == "Living Lamp" && deviceOf(app, 11).label == "Hall Motion"
+    b.parse(sse("70:0", [[type: "update", data: [[id: rid(1), type: "device", metadata: [name: "Reading Lamp"]]]]])); hub.settle()
+    assert lightOf(app, 101).label == "Reading Lamp" && app.res().lights[rid(101)].name == "Reading Lamp"
+    b.parse(sse("71:0", [[type: "update", data: [[id: rid(102), type: "light", metadata: [name: "Stale", archetype: "ceiling_round"]]]]])); hub.settle()
+    assert lightOf(app, 102).label == "Hall Ceiling", "a light's own name is deprecated; only its device's name counts"
+    b.parse(sse("75:0", [[type: "update", data: [[id: rid(2), type: "device", metadata: [name: "Hall Light"]]]]])); hub.settle()
+    assert lightOf(app, 102).label == "Hall Light"
+    b.parse(sse("72:0", [[type: "update", data: [[id: rid(301), type: "room", metadata: [name: "Lounge"]]]]])); hub.settle()
+    assert deviceOf(app, 401).label == "Lounge" && deviceOf(app, 501).label == "Relax (Lounge)" && deviceOf(app, 504).label == "Fireplace (Lounge)"
+    assert deviceOf(app, 503).label == "Nightlight (Hall)", "another room's scenes keep their label"
+    assert deviceOf(app, 502).label == "Movie", "a label set in Hubitat isn't overwritten by a room rename"
+    b.parse(sse("76:0", [[type: "update", data: [[id: rid(502), type: "scene", metadata: [name: "Focus"]]]]])); hub.settle()
+    assert deviceOf(app, 502).label == "Focus (Lounge)", "renaming the scene itself relabels it"
+    b.parse(sse("73:0", [[type: "update", data: [[id: rid(501), type: "scene", metadata: [name: "Unwind"]]]]])); hub.settle()
+    assert deviceOf(app, 501).label == "Unwind (Lounge)"
+    assert deviceOf(app, 401).current.lightEffects.contains("Unwind") && !deviceOf(app, 401).current.lightEffects.contains("Relax")
+    b.parse(sse("74:0", [[type: "update", data: [[id: rid(11), type: "device", metadata: [name: "Hallway Motion"]]]]])); hub.settle()
+    assert deviceOf(app, 11).label == "Hallway Motion"
+}
+
+check("renames: a label set in Hubitat stays until Hue renames that device; the option turns it off") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    lightOf(app, 103).label = "Front Porch"
+    b.parse(sse("80:0", [[type: "update", data: [[id: rid(3), type: "device", metadata: [name: "Porch"]], [id: rid(103), type: "light", on: [on: true]]]]])); hub.settle()
+    assert lightOf(app, 103).label == "Front Porch", "Hue's name didn't change"
+    app.settings.syncNames = false
+    b.parse(sse("81:0", [[type: "update", data: [[id: rid(3), type: "device", metadata: [name: "Porch Light"]]]]])); hub.settle()
+    assert lightOf(app, 103).label == "Front Porch" && app.res().lights[rid(103)].name == "Porch"
+    app.settings.syncNames = true
+    b.parse(sse("82:0", [[type: "update", data: [[id: rid(3), type: "device", metadata: [name: "Porch Light"]]]]])); hub.settle()
+    assert lightOf(app, 103).label == "Porch Light"
+}
+
+check("missing drivers: devices whose driver isn't installed are skipped with a notice, the rest are added, and Done again adds them") {
+    Hub hub = new Hub(root)
+    hub.missingDrivers << "Hue Plug" << "Hue Scene"
+    HubitatScript app = linkedAll(hub)
+    assert lightOf(app, 101) && lightOf(app, 104) == null, "the plug driver is missing, the other lights are added"
+    assert deviceOf(app, 401) && deviceOf(app, 501) == null && deviceOf(app, 601) == null
+    assert app.state.missingDrivers == ["Hue Plug", "Hue Scene"]
+    assert app.log.at("warn").any { it.contains("Hue Plug, Hue Scene") && it.contains("Package Manager") }
+    hub.missingDrivers.clear()
+    app.updated(); hub.settle()
+    assert lightOf(app, 104) && deviceOf(app, 501) && deviceOf(app, 601)
+    assert !app.state.containsKey("missingDrivers")
+}
+
+// ---------------------------------------------------------------- colour temperature ramp
+
+check("colour temperature ramp: one PUT for a light and for a group; a newer ramp or set replaces a waiting one") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    Map info = app.res().lights[rid(102)] as Map
+    int range = (info.mirekMax as int) - (info.mirekMin as int)
+    lightOf(app, 102).startColorTemperatureChange("warmer")
+    assert puts(b).last()[2].path == "/clip/v2/resource/light/${rid(102)}"
+    assert puts(b).last()[2].body == [color_temperature_delta: [action: "up", mirek_delta: range], dynamics: [duration: 4000]], "no on: a ramp doesn't turn a light on"
+    lightOf(app, 102).setColorTemperature(3000)                // waits for the pacing
+    lightOf(app, 102).startColorTemperatureChange("cooler")    // replaces the waiting set
+    lightOf(app, 102).stopColorTemperatureChange()             // replaces the waiting ramp
+    ack(b)
+    hub.advance(1000); b.pump()
+    Map body = puts(b).last()[2].body
+    assert body.color_temperature_delta == [action: "stop"] && !body.containsKey("color_temperature"), "${body}"
+    ack(b)
+    hub.advance(1000); lightOf(app, 102).setColorTemperature(3000); lightOf(app, 102).setColorTemperature(2700); b.pump()
+    ack(b)
+    hub.advance(1000); b.pump()
+    int before = puts(b).size()
+    deviceOf(app, 401).startColorTemperatureChange("cooler")
+    assert puts(b).size() == before + 1 && puts(b).last()[2].path == "/clip/v2/resource/grouped_light/${rid(401)}"
+    assert puts(b).last()[2].body == [color_temperature_delta: [action: "down", mirek_delta: 347], dynamics: [duration: 4000]]
+}
+
+// ---------------------------------------------------------------- bulk power-up and relabel
+
+check("bulk power-up: the button shows for a behaviour and matching lights; it sends the preset to the picked types, paced") {
+    List real = fixture.data.findAll { it.type == "light" }
+    real.each { it.powerup = [preset: "powerfail", configured: true, on: [mode: "previous"]] }
+    try {
+        Hub hub = new Hub(root)
+        HubitatScript app = linked(hub)
+        FakeDevice b = bridgeOf(app)
+        started(hub, b)
+        Map lights = app.res().lights as Map
+        List bulbs = lights.findAll { k, l -> l.kind in ["color", "ct", "dim"] }.keySet().toList()
+        List plugs = lights.findAll { k, l -> l.kind == "onoff" }.keySet().toList()
+        assert bulbs && plugs
+        app.mainPage()
+        assert !app.declaredInputs.containsKey("btnPowerUp"), "no behaviour picked: no button"
+        app.settings.powerUpBehavior = "off"
+        app.mainPage()
+        assert app.declaredInputs.containsKey("btnPowerUp")
+        int before = puts(b).size()
+        app.appButtonHandler("btnPowerUp"); app.mainPage()
+        List sent = []
+        for (int i = 0; i < 30 && sent.size() < bulbs.size(); i++) {
+            hub.advance(200); b.pump()
+            puts(b).drop(before + sent.size()).each { sent << it[2]; ack(b) }
+        }
+        assert sent*.path.sort() == bulbs.collect { "/clip/v2/resource/light/${it}".toString() }.sort(), "bulbs only by default, not the plug"
+        assert sent.every { it.body == [powerup: [preset: "custom", on: [mode: "on", on: [on: false]]]] }
+        assert app.state.powerUpResult.contains("Stay off") && app.state.powerUpResult.contains("${bulbs.size()} lights")
+        app.settings.powerUpKinds = ["onoff"]
+        app.deleteChildDevice(app.dni(plugs[0]))   // the plug has no device here, and only lights with a device count as added...
+        app.appButtonHandler("btnPowerUp"); app.mainPage()
+        assert app.state.powerUpResult.startsWith("Nothing sent")
+        int quiet = puts(b).size()
+        hub.advance(1000); b.pump()
+        assert puts(b).size() == quiet
+        app.settings.powerUpScope = "all"       // ...until all lights on the bridge are
+        app.appButtonHandler("btnPowerUp"); app.mainPage()
+        hub.advance(1000); b.pump()
+        assert puts(b).last()[2].path == "/clip/v2/resource/light/${plugs[0]}"
+        assert app.state.powerUpResult.contains("${plugs.size()}")
+    } finally {
+        real.each { it.remove("powerup") }
+    }
+}
+
+check("bulk power-up and relabel: before the bridge has been read they say so, and 'added' means devices that exist") {
+    List real = fixture.data.findAll { it.type == "light" }
+    real.each { it.powerup = [preset: "powerfail", configured: true, on: [mode: "previous"]] }
+    try {
+    Hub hub = new Hub(root)
+    hub.missingDrivers << "Hue Plug"
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    assert lightOf(app, 104) == null, "the plug's driver isn't installed"
+    app.settings.powerUpBehavior = "off"; app.settings.powerUpKinds = ["onoff"]
+    int sent = puts(b).size()
+    app.appButtonHandler("btnPowerUp"); app.mainPage()
+    hub.advance(1000); b.pump()
+    assert app.state.powerUpResult.startsWith("Nothing sent") && puts(b).size() == sent, "a plug that was never added isn't changed"
+    app.getClass().RES.clear()
+    app.appButtonHandler("btnPowerUp"); app.mainPage()
+    assert app.state.powerUpResult == "Still reading the bridge. Try again in a moment."
+    app.appButtonHandler("btnRelabel"); app.mainPage()
+    assert app.state.relabelResult == "Still reading the bridge. Try again in a moment."
+    } finally {
+        real.each { it.remove("powerup") }
+    }
+}
+
+check("relabel: the button puts every device's label back to its Hue name") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    lightOf(app, 101).label = "Custom"
+    deviceOf(app, 401).label = "Lounge"
+    deviceOf(app, 501).label = "Whatever"
+    app.appButtonHandler("btnRelabel"); app.mainPage()
+    assert lightOf(app, 101).label == "Living Lamp" && deviceOf(app, 401).label == "Living Room" && deviceOf(app, 501).label == "Relax (Living Room)"
+    assert app.state.relabelResult == "Relabelled 3 devices."
+    assert bridgeOf(app).label.startsWith("Hue Bridge"), "the bridge device is not renamed"
+    app.appButtonHandler("btnRelabel"); app.mainPage()
+    assert app.state.relabelResult == "Every device already matches the Hue app."
+}
+
 Check.finish()

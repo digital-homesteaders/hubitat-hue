@@ -27,6 +27,10 @@ import java.util.concurrent.ConcurrentHashMap
 @Field static final long CLOUD_DISCOVERY_MIN_MS = 15 * 60 * 1000L
 @Field static final String DRIVER_BRIDGE = "Hue Bridge"
 @Field static final Map LIGHT_DRIVERS = [color: "Hue Color Light", ct: "Hue White Ambiance Light", dim: "Hue White Light", onoff: "Hue Plug"]
+@Field static final Map POWER_UP_KINDS = [color: "Colour lights", ct: "White ambiance lights", dim: "White lights", onoff: "Plugs and relays"]
+@Field static final List POWER_UP_BULBS = ["color", "ct", "dim"]   // the default pick: plugs and relays are chosen on purpose
+@Field static final Map POWER_UP_CHOICES = [previous: "Back to how they were", lastOnState: "On, as they were when last on",
+                                           safety: "On at warm white (Hue's safety)", off: "Stay off"]
 @Field static final String DRIVER_GROUP = "Hue Group"
 @Field static final Map SENSOR_KINDS_TEXT = [button: "remote", motion: "motion sensor", contact: "contact sensor"]
 @Field static final String DRIVER_SCENE = "Hue Scene"
@@ -114,6 +118,12 @@ def mainPage() {
                 if (status == "unauthorized") paragraph "<span style='color:#b00'>The bridge no longer accepts Hue Connect's key. Press Link again.</span>"
                 input "btnRelink", "button", title: "Link again"
             }
+            if (state.missingDrivers) {
+                section("Drivers to install") {
+                    paragraph "<span style='color:#b00'>Not added, because these drivers aren't installed: <b>${((state.missingDrivers ?: []) as List).join(', ')}</b>.</span> " +
+                        "Open Hubitat Package Manager, choose Modify for Hue Connect, tick them under the optional drivers, then press Done here again."
+                }
+            }
             section("Lights") {
                 Map lights = (res().lights ?: [:]) as Map
                 if (lights) {
@@ -144,8 +154,29 @@ def mainPage() {
                         options: sensors.collectEntries { rid, d -> [(rid): "${d.name} (${SENSOR_KINDS_TEXT[d.kind]})"] }.sort { it.value }
                 }
             }
+            section("Power-up behaviour (after a power cut)") {
+                Map lights = (res().lights ?: [:]) as Map
+                paragraph "Choose what lights do when power returns, for the types you pick. The setting is stored in each light, so it applies even when Hubitat is off."
+                input "powerUpBehavior", "enum", title: "When power returns, lights should be", options: POWER_UP_CHOICES, required: false, submitOnChange: true
+                input "powerUpKinds", "enum", title: "Light types", multiple: true, options: POWER_UP_KINDS, defaultValue: POWER_UP_BULBS, submitOnChange: true
+                input "powerUpScope", "enum", title: "Which lights", options: [added: "Lights added to Hubitat", all: "All lights on the bridge"],
+                    defaultValue: "added", submitOnChange: true
+                List targets = powerUpTargets(lights, powerUpKindsPicked(), settings.powerUpScope == "all", addedRids())
+                if (settings.powerUpBehavior && targets) {
+                    if (settings.powerUpBehavior == "off") {
+                        paragraph "<small>A light that powers up off also stays off when a wall switch is flipped. Turn it on from an app, a remote or Hubitat.</small>"
+                    }
+                    input "btnPowerUp", "button", title: "Set ${targets.size()} ${targets.size() == 1 ? 'light' : 'lights'}: ${POWER_UP_CHOICES[settings.powerUpBehavior]}"
+                } else if (settings.powerUpBehavior) {
+                    paragraph "No lights match those types and that choice of lights."
+                }
+                if (state.powerUpResult) paragraph "<small>${state.powerUpResult}</small>"
+            }
             section("Options") {
+                input "syncNames", "bool", title: "Rename devices when they are renamed in the Hue app", defaultValue: true
                 input "logEnable", "bool", title: "Debug logging", defaultValue: false
+                input "btnRelabel", "button", title: "Relabel devices to match the Hue app"
+                paragraph "<small>Replaces any label you set in Hubitat. ${state.relabelResult ?: ''}</small>"
             }
         }
     }
@@ -157,6 +188,8 @@ private void handlePendingButton() {
     String btn = state.remove("pendingButton")
     if (btn == "btnSearch") discover()
     else if (btn == "btnLink") startLink()
+    else if (btn == "btnPowerUp") applyPowerUp()
+    else if (btn == "btnRelabel") relabelAll()
     else if (btn == "btnRelink") {
         // Same bridge, new key: devices stay. The page shows the Link section until it's done.
         rememberFound([id: state.bridge.id, ip: state.bridge.ip, name: state.bridge.name])
@@ -367,7 +400,7 @@ void applyResources(List items) {
     items.findAll { it.type in ["scene", "smart_scene"] }.each { sc ->
         String roomRid = sc.group?.rid
         scenes[sc.id] = [name: (sc.metadata?.name ?: "Scene") as String, smart: sc.type == "smart_scene", groupedLight: groupOf[roomRid],
-                         room: (owners[roomRid]?.metadata?.name ?: "") as String, dynamic: sc.palette?.color ? true : false]
+                         room: (owners[roomRid]?.metadata?.name ?: "") as String, roomRid: roomRid, dynamic: sc.palette?.color ? true : false]
     }
     Map services = items.findAll { it.type in SENSOR_SERVICES }.collectEntries { [(it.id): it] }
     Map sensors = [:]
@@ -443,10 +476,14 @@ static List effectListEvents(String groupedLightRid, Map scenes) {
     return [[name: "lightEffects", value: groovy.json.JsonOutput.toJson(numbered)]]
 }
 
-/** What doesn't change about a light: name, kind (which driver), colour gamut and CT range. */
+/**
+ * What doesn't change about a light: name, kind (which driver), colour gamut and CT range. The name is the device's: Hue marks
+ * the light's own name deprecated ("use metadata on device level") and a rename goes to the device. They differ on real
+ * bridges (13 of 61 lights on the one Hue Connect was tested with), and the Hue app shows the device's.
+ */
 static Map lightInfo(Map l, Map device) {
     String kind = l.color ? "color" : l.color_temperature ? "ct" : l.dimming ? "dim" : "onoff"
-    Map info = [name: (l.metadata?.name ?: device?.metadata?.name ?: "Hue light") as String, kind: kind, device: l.owner?.rid] +
+    Map info = [name: (device?.metadata?.name ?: l.metadata?.name ?: "Hue light") as String, kind: kind, device: l.owner?.rid] +
                productData(device)
     // Effects, timed effects and signals as this light reports them (Hue: never assume from the model)
     List fx = ((l.effects_v2?.action?.effect_values ?: l.effects?.effect_values ?: []) as List) - "no_effect"
@@ -492,20 +529,148 @@ private boolean syncDevices() {
     Map sensors = (res().sensors ?: [:]) as Map
     ((settings.selectedSensors ?: []) as List).each { String rid -> if (sensors[rid]) wanted[rid] = [SENSOR_DRIVERS[sensors[rid].kind], sensors[rid].name] }
     boolean added = false
+    Set missing = [] as Set   // drivers the user didn't install (HPM lists most of them as optional)
     wanted.each { String rid, List d ->
         if (!getChildDevice(dni(rid))) {
-            def cd = addChildDevice("hue", d[0], dni(rid), [name: d[0], label: d[1], isComponent: false])
+            def cd
+            try {
+                cd = addChildDevice("hue", d[0], dni(rid), [name: d[0], label: d[1], isComponent: false])
+            } catch (Exception e) {
+                if (!isMissingDriver(e)) throw e
+                missing << d[0]
+                return
+            }
             if (d[0] == DRIVER_GROUP) cd.parse(effectListEvents(rid, scenes))
             if (lights[rid]?.effects) cd.parse(lightEffectEvents(lights[rid] as Map))
             if (d[0] == SENSOR_DRIVERS.button) cd.parse([[name: "numberOfButtons", value: sensors[rid].numberOfButtons]])
             added = true
         }
     }
+    if (missing) {
+        state.missingDrivers = missing.sort()
+        log.warn "Hue Connect: not added, because these drivers aren't installed: ${missing.sort().join(', ')}. Install them with Hubitat Package Manager (Modify, then pick the optional drivers) and press Done again."
+    } else {
+        state.remove("missingDrivers")
+    }
     getChildDevices().findAll { ridOf(it.deviceNetworkId as String) && !wanted.containsKey(ridOf(it.deviceNetworkId as String)) }.each {
         deleteChildDevice(it.deviceNetworkId)
     }
     return added
 }
+
+/** The Hue resource ids of this app's Hubitat devices (a selected light whose driver isn't installed has none). */
+private List addedRids() { getChildDevices().collect { ridOf(it.deviceNetworkId as String) }.findAll { it } }
+
+/** The light types picked for the power-up change; the bulbs unless the user chose. */
+private List powerUpKindsPicked() { ((settings.powerUpKinds ?: POWER_UP_BULBS) as List) }
+
+/** Set the chosen power-up behaviour on every matching light: one PUT each, paced by the Hue Bridge device's queue. */
+private void applyPowerUp() {
+    String behavior = settings.powerUpBehavior as String
+    Map body = powerUpBody(behavior)
+    if (!res().lights) {
+        state.powerUpResult = "Still reading the bridge. Try again in a moment."
+        return
+    }
+    List rids = powerUpTargets(res().lights as Map, powerUpKindsPicked(), settings.powerUpScope == "all", addedRids())
+    if (!body || !rids) {
+        state.powerUpResult = "Nothing sent: pick a behaviour and at least one light type."
+        return
+    }
+    rids.each { String rid -> bridgeDevice()?.enqueue("light", rid, body) }
+    state.powerUpResult = "Sent \"${POWER_UP_CHOICES[behavior]}\" to ${rids.size()} ${rids.size() == 1 ? 'light' : 'lights'}."
+    log.info "Hue Connect: power-up set to ${behavior} on ${rids.size()} lights"
+}
+
+/** The lights a power-up change would reach: those that offer it, of the picked types, and added to Hubitat unless "all". */
+static List powerUpTargets(Map lights, List kinds, boolean allOnBridge, List added) {
+    lights.findAll { rid, l -> l.powerUp && l.kind in kinds && (allOnBridge || rid in added) }.keySet().sort { lights[it].name }.toList()
+}
+
+/** Put every device's label back to its name in the Hue app (for labels set before names followed Hue, or changed in Hubitat). */
+private void relabelAll() {
+    Map r = res()
+    if (!r.lights) {
+        state.relabelResult = "Still reading the bridge. Try again in a moment."
+        return
+    }
+    int changed = 0
+    getChildDevices().each { cd ->
+        String rid = ridOf(cd.deviceNetworkId as String)
+        String label = rid ? hueLabel(rid, r) : null
+        if (label && cd.label != label) {
+            cd.setLabel(label)
+            changed++
+        }
+    }
+    state.relabelResult = changed ? "Relabelled ${changed} ${changed == 1 ? 'device' : 'devices'}." : "Every device already matches the Hue app."
+}
+
+/** A device's label as the Hue app names it: a light, group, scene (with its room) or remote or sensor; null if unknown. */
+static String hueLabel(String rid, Map res) {
+    Map r = res ?: [:]
+    if (r.lights?.get(rid)) return r.lights[rid].name
+    if (r.groups?.get(rid)) return r.groups[rid].name
+    if (r.scenes?.get(rid)) return sceneLabel(r.scenes[rid] as Map)
+    return r.sensors?.get(rid)?.name
+}
+
+/**
+ * A name changed on the bridge (in the Hue app): update what the app remembers and relabel the Hubitat device. Only a
+ * change relabels, so a label set in Hubitat stays until the same thing is renamed in Hue. Optional: "Rename devices ...".
+ */
+private void applyRenames(Map item) {
+    if (settings.syncNames == false) return
+    Map r = res()
+    List changes = renamed(item, r)
+    changes.each { Map c ->
+        Map info = (r[c.section] as Map)[c.rid] as Map
+        String was = c.section == "scenes" ? sceneLabel(info) : info.name
+        info.putAll(c.set as Map)
+        def cd = getChildDevice(dni(c.rid as String))
+        String label = c.section == "scenes" ? sceneLabel(info) : info.name
+        boolean roomOnly = c.section == "scenes" && !c.set.containsKey("name")   // the scene itself wasn't renamed, its room was
+        if (cd && cd.label != label && (!roomOnly || cd.label == was)) {
+            log.info "Hue Connect: ${cd.label} is now ${label}"
+            cd.setLabel(label)
+        }
+        if (c.section == "scenes" && c.set.containsKey("name") && info.groupedLight) {   // a room's effects are its scenes' names
+            getChildDevice(dni(info.groupedLight as String))?.parse(effectListEvents(info.groupedLight as String, r.scenes as Map))
+        }
+    }
+}
+
+/**
+ * What a rename on the bridge changes in the app's maps: [[section: lights|groups|scenes|sensors, rid:, set: [...]]].
+ * A light is named by its device (the light's own name is deprecated), so only a device rename relabels it. A room or
+ * zone name is its group's name and part of its scenes' labels. Names that already match give nothing (the full read at start sends every name).
+ */
+static List renamed(Map item, Map res) {
+    String name = item.metadata?.name as String
+    if (!name) return []
+    List out = []
+    Map lights = (res.lights ?: [:]) as Map, groups = (res.groups ?: [:]) as Map
+    Map scenes = (res.scenes ?: [:]) as Map, sensors = (res.sensors ?: [:]) as Map
+    switch (item.type) {
+        case "device":
+            lights.each { rid, l -> if (l.device == item.id && l.name != name) out << [section: "lights", rid: rid, set: [name: name]] }
+            if (sensors[item.id] && sensors[item.id].name != name) out << [section: "sensors", rid: item.id, set: [name: name]]
+            break
+        case "room":
+        case "zone":
+            groups.each { rid, g -> if (g.owner == item.id && g.name != name) out << [section: "groups", rid: rid, set: [name: name]] }
+            scenes.each { rid, s -> if (s.roomRid == item.id && s.room != name) out << [section: "scenes", rid: rid, set: [room: name]] }
+            break
+        case "scene":
+        case "smart_scene":
+            if (scenes[item.id] && scenes[item.id].name != name) out << [section: "scenes", rid: item.id, set: [name: name]]
+            break
+    }
+    return out
+}
+
+/** True for what Hubitat throws when a driver isn't installed (UnknownDeviceTypeException: "Device type ... not found"). */
+static boolean isMissingDriver(Exception e) { e.class.simpleName == "UnknownDeviceTypeException" || (e.message ?: "") ==~ /(?is).*device type .* not found.*/ }
 
 /** The Hue resource id in one of this bridge's device network ids, or null (e.g. the bridge device itself). */
 private String ridOf(String deviceNetworkId) {
@@ -523,6 +688,7 @@ void hueEvents(String type, List items) {
         return
     }
     items.each { Map item ->
+        if (item.metadata?.name) applyRenames(item)
         switch (item.type) {
             case "light":
                 def d = getChildDevice(dni(item.id as String))
@@ -895,6 +1061,13 @@ static Map lightCommand(String command, List args, Map info, Map current, Intege
             return [dimming_delta: [action: args[0] == "down" ? "down" : "up", brightness_delta: 100], dynamics: [duration: LEVEL_CHANGE_MS]]
         case "stopLevelChange":
             return [dimming_delta: [action: "stop"]]
+        case "startColorTemperatureChange":
+            // Warmer is more mirek. The whole range over LEVEL_CHANGE_MS (Hue clips at the light's limits), so stopping on release stops it partway
+            if (!(info.kind in ["ct", "color"]) || !(args[0] in ["warmer", "cooler"])) return null
+            int range = Math.min(950, Math.max(1, ((info.mirekMax ?: 500) as int) - ((info.mirekMin ?: 153) as int)))
+            return [color_temperature_delta: [action: args[0] == "cooler" ? "down" : "up", mirek_delta: range], dynamics: [duration: LEVEL_CHANGE_MS]]
+        case "stopColorTemperatureChange":
+            return info.kind in ["ct", "color"] ? [color_temperature_delta: [action: "stop"]] : null
         default:
             return null
     }

@@ -22,6 +22,7 @@ class Hub {
     Map<String, File> driverFiles = [:]   // driver name -> source file
     Map<String, Class> classes = [:]      // path -> compiled class
     String temperatureScale = "F"
+    Set<String> missingDrivers = [] as Set   // drivers "not installed": addChildDevice throws for them, as on the hub
     long clockOffset = 0                  // added to now(); see advance()
     long nextId = 100
     List<HubitatScript> scripts = []
@@ -166,6 +167,7 @@ abstract class HubitatScript extends Script {
     List<FakeDevice> getChildDevices() { new ArrayList(children) }
     FakeDevice addChildDevice(String namespace, String driverName, String dni, Map props = [:]) {
         if (getChildDevice(dni)) throw new IllegalArgumentException("duplicate dni ${dni}")
+        if (hub.missingDrivers.contains(driverName)) throw new UnknownDeviceTypeException("Device type '${driverName}' in namespace '${namespace}' not found")
         FakeDevice d = hub.device(driverName, dni, props, this)
         children << d
         calls << ["addChildDevice", driverName, dni, props]
@@ -309,6 +311,7 @@ class FakeDevice {
 
     long getIdAsLong() { id }
     String getDisplayName() { label ?: name }
+    void setLabel(String l) { label = l }
     String getDataValue(String k) { data[k] }
     void updateDataValue(String k, def v) { data[k] = v?.toString() }
     def currentValue(String attr, boolean skipCache = false) { current[attr] }
@@ -334,4 +337,9 @@ class FakeResp {
     def json
     Map headers = [:]
     String errorMessage
+}
+
+/** What Hubitat throws for a driver that isn't installed (its real class is com.hubitat.app.exception.UnknownDeviceTypeException). */
+class UnknownDeviceTypeException extends RuntimeException {
+    UnknownDeviceTypeException(String message) { super(message) }
 }

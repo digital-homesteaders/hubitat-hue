@@ -111,6 +111,31 @@ check("lights: commands stay inside what each light reports, with on only for a 
     }
 }
 
+check("names: a light is named by its device, as Hue says (13 real lights carry another name of their own), and a device rename is found") {
+    assert lights.count { it.metadata.name != deviceOf(it).metadata.name } == 13, "the dump has lights whose own name is not their device's"
+    lights.each { Map l ->
+        assert infoOf(l).name == deviceOf(l).metadata.name, "${l.metadata.name} vs ${deviceOf(l).metadata.name}"
+        Map res = [lights: [(l.id): infoOf(l)]]
+        assert app.renamed([type: "device", id: l.owner.rid, metadata: [name: "Renamed"]], res) == [[section: "lights", rid: l.id, set: [name: "Renamed"]]], l.metadata.name
+        assert app.renamed([type: "device", id: l.owner.rid, metadata: [name: deviceOf(l).metadata.name]], res) == [], l.metadata.name
+    }
+}
+
+check("colour temperature ramp: every real light with colour temperature ramps its own range, others refuse") {
+    lights.each { Map l ->
+        Map info = infoOf(l)
+        Map up = app.lightCommand("startColorTemperatureChange", ["warmer"], info, [switch: "on"], 400)
+        Map stop = app.lightCommand("stopColorTemperatureChange", [], info, [switch: "on"], 400)
+        if (l.color_temperature) {
+            assert up.color_temperature_delta.mirek_delta == info.mirekMax - info.mirekMin && up.color_temperature_delta.action == "up", l.metadata.name
+            assert stop == [color_temperature_delta: [action: "stop"]], l.metadata.name
+        } else {
+            assert up == null && stop == null, l.metadata.name
+        }
+    }
+    assert lights.count { it.color_temperature } == 48
+}
+
 check("power-up: every real light offers it, reports a preset the driver can show, and can be set to each behaviour") {
     Map shown = [:]
     lights.each { Map l ->
@@ -125,6 +150,14 @@ check("power-up: every real light offers it, reports a preset the driver can sho
         }
     }
     assert shown == [previous: 50, safety: 11], "the bridge's lights as dumped: ${shown}"
+}
+
+check("bulk power-up: on the real bridge the bulbs are 58 lights, the plugs 3, and every light offers it") {
+    Map infos = lights.collectEntries { [(it.id): infoOf(it)] }
+    assert app.powerUpTargets(infos, ["color", "ct", "dim"], true, []).size() == 58
+    assert app.powerUpTargets(infos, ["onoff"], true, []).size() == 3
+    assert app.powerUpTargets(infos, ["color", "ct", "dim", "onoff"], true, []).size() == 61
+    assert app.powerUpTargets(infos, ["color"], false, [lights[0].id, lights[1].id]).size() <= 2
 }
 
 check("scene speed: dynamic scenes show a whole percentage, static scenes and smart scenes show none") {

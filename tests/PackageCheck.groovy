@@ -47,12 +47,12 @@ check("names, namespaces and import URLs match each file's definition") {
     }
 }
 
-check("the app, the Hue Bridge and the light, group and scene drivers are required; remote and sensor drivers optional") {
+check("only the app and the Hue Bridge are required; every other driver is an optional pick in HPM") {
     Map required = entries.collectEntries { [(it.name): it.required] }
-    ["Hue Connect", "Hue Bridge", "Hue Color Light", "Hue White Ambiance Light", "Hue White Light", "Hue Plug", "Hue Group", "Hue Scene"].each {
-        assert required[it] == true, it
-    }
-    ["Hue Button", "Hue Motion Sensor", "Hue Contact Sensor"].each { assert required[it] == false, it }
+    ["Hue Connect", "Hue Bridge"].each { assert required[it] == true, it }
+    ["Hue Color Light", "Hue White Ambiance Light", "Hue White Light", "Hue Plug", "Hue Group", "Hue Scene",
+     "Hue Button", "Hue Motion Sensor", "Hue Contact Sensor"].each { assert required[it] == false, it }
+    assert required.findAll { it.value }.keySet() == ["Hue Connect", "Hue Bridge"] as Set, "a new driver must be listed above, as required or optional"
 }
 
 check("ids are unique UUIDs; the licence points at NOTICE, which credits Hue's docs and the projects learned from") {
