@@ -44,21 +44,33 @@ Hue Connect listens to the bridge's live event stream instead of polling it.
 Needs a square Hue Bridge (2015 or later) or a Hue Bridge Pro. The original
 round bridge isn't supported.
 
+Hue Connect talks to the bridge, so it only sees what is paired to the bridge.
+A Hue bulb paired straight to Hubitat's own Zigbee radio isn't on the bridge and
+is handled by Hubitat's built-in Zigbee drivers instead. A bulb belongs to one
+Zigbee network at a time, so pair it to the bridge to use it here.
+
 ## Install
 
-Paste each file into Hubitat (**Apps Code** / **Drivers Code** → New → paste →
-Save), or use HPM once the package is published:
+Use Hubitat Package Manager (HPM) once the package is published, or paste each
+file into Hubitat (**Apps Code** / **Drivers Code** → New → paste → Save).
+
+HPM installs the app and the Hue Bridge driver, then lets you tick the other
+drivers you want: the light drivers (colour, white ambiance, white, plug),
+Hue Group, Hue Scene, and the remote and sensor drivers. Pick only the kinds you
+have. If you add a device whose driver isn't installed, Hue Connect skips it,
+says which driver is missing on its page and in the log, and adds it when you
+install the driver and press **Done** again (HPM → Modify adds drivers later).
 
 | File | Where |
 |---|---|
 | `apps/hue-connect.groovy` | Apps Code |
 | `drivers/hue-bridge.groovy` | Drivers Code |
-| `drivers/hue-color-light.groovy` | Drivers Code |
-| `drivers/hue-white-ambiance-light.groovy` | Drivers Code |
-| `drivers/hue-white-light.groovy` | Drivers Code |
-| `drivers/hue-plug.groovy` | Drivers Code |
-| `drivers/hue-group.groovy` | Drivers Code |
-| `drivers/hue-scene.groovy` | Drivers Code |
+| `drivers/hue-color-light.groovy` | Drivers Code (if you have colour lights) |
+| `drivers/hue-white-ambiance-light.groovy` | Drivers Code (if you have white ambiance lights) |
+| `drivers/hue-white-light.groovy` | Drivers Code (if you have white lights) |
+| `drivers/hue-plug.groovy` | Drivers Code (if you have plugs) |
+| `drivers/hue-group.groovy` | Drivers Code (if you add rooms and zones) |
+| `drivers/hue-scene.groovy` | Drivers Code (if you add scenes) |
 | `drivers/hue-button.groovy` | Drivers Code (if you have Hue remotes) |
 | `drivers/hue-motion-sensor.groovy` | Drivers Code (if you have motion sensors) |
 | `drivers/hue-contact-sensor.groovy` | Drivers Code (if you have contact sensors) |
@@ -68,6 +80,10 @@ Then **Apps → Add User App → Hue Connect**:
 2. Press **Link**, then the round button on top of the bridge within 30 s.
 3. Tick the lights, rooms and zones, scenes, and remotes and sensors you want,
    then press **Done**.
+
+Names follow the Hue app: rename a light, room, zone, scene or sensor there and
+its Hubitat device is relabelled to match (switch this off under Options). A
+label you set in Hubitat stays until that item is renamed in Hue.
 
 ## Security
 

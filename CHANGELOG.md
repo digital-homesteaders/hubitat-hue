@@ -16,6 +16,17 @@
   previous; `effectName` follows the Hue app), Flash (Hue's signaling for the
   chosen seconds, else a breathe alert), Identify, sunrise/sunset timed effects
   up to 6 hours, and `hueMode` (normal or streaming).
+- **Choose drivers in HPM:** only the app and the Hue Bridge driver are
+  required; the light, group, scene, remote and sensor drivers are optional picks.
+  A device whose driver isn't installed is skipped (it used to stop the whole
+  sync), with a notice on the app's page and in the log; Done again adds it once
+  the driver is installed.
+- **Names follow the Hue app:** renaming a light, room, zone, scene or sensor in
+  Hue relabels its Hubitat device (Options turns this off), and a room's scenes
+  and a group's effect list follow. A light is now named by its device, as Hue
+  specifies (the light's own name is deprecated); on one real bridge 13 of 61
+  lights had a different, stale name there. Existing devices keep their label
+  until their device is renamed in Hue, or they are removed and added again.
 - **Power-up behaviour:** every light and plug shows `powerUp` (previous,
   lastOnState, safety, off or custom) and **Set Power Up** changes it, so a
   light can stay off after an outage. It sends only the preset, and only to

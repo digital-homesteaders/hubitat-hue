@@ -297,4 +297,27 @@ check("scene speed: Hue's 0-1 as a percentage on dynamic scenes only, and back f
     assert app.speedFromPercent(150) == 1d && app.speedFromPercent(-5) == 0d
 }
 
+check("renames: what a name change on the bridge changes, and nothing when the name already matches") {
+    Map res = [lights: [L1: [name: "Lamp", device: "D1"], L2: [name: "Other", device: "D2"]],
+               groups: [G1: [name: "Living", owner: "R1"], G2: [name: "Hall", owner: "R2"]],
+               scenes: [S1: [name: "Relax", room: "Living", roomRid: "R1", groupedLight: "G1"], S2: [name: "Night", room: "Hall", roomRid: "R2", groupedLight: "G2"]],
+               sensors: [D9: [name: "Motion"]]]
+    assert app.renamed([type: "light", id: "L1", metadata: [name: "Desk", archetype: "x"]], res) == [], "a light's own name is deprecated; its device's is the name"
+    assert app.renamed([type: "light", id: "L1", on: [on: true]], res) == [] && app.renamed([type: "device", id: "unknown", metadata: [name: "x"]], res) == []
+    assert app.renamed([type: "device", id: "D1", metadata: [name: "Lamp"]], res) == []
+    assert app.renamed([type: "device", id: "D1", metadata: [name: "Desk"]], res) == [[section: "lights", rid: "L1", set: [name: "Desk"]]]
+    assert app.renamed([type: "device", id: "D9", metadata: [name: "Hall Motion"]], res) == [[section: "sensors", rid: "D9", set: [name: "Hall Motion"]]]
+    assert app.renamed([type: "room", id: "R1", metadata: [name: "Lounge"]], res) ==
+        [[section: "groups", rid: "G1", set: [name: "Lounge"]], [section: "scenes", rid: "S1", set: [room: "Lounge"]]]
+    assert app.renamed([type: "zone", id: "R2", metadata: [name: "Hall"]], res) == []
+    assert app.renamed([type: "scene", id: "S2", metadata: [name: "Bedtime"]], res) == [[section: "scenes", rid: "S2", set: [name: "Bedtime"]]]
+    assert app.renamed([type: "smart_scene", id: "S2", metadata: [name: "Night"]], res) == [] && app.renamed([type: "scene", id: "S2"], [:]) == []
+}
+
+check("missing drivers: only Hubitat's own 'not found' is taken as a driver that isn't installed") {
+    assert app.isMissingDriver(new UnknownDeviceTypeException("Device type 'Hue Plug' in namespace 'hue' not found"))
+    assert app.isMissingDriver(new RuntimeException("Device type 'Hue Plug' in namespace 'hue' not found"))
+    assert !app.isMissingDriver(new IllegalArgumentException("duplicate dni x")) && !app.isMissingDriver(new RuntimeException())
+}
+
 Check.finish()

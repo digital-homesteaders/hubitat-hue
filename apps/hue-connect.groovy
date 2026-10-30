@@ -114,6 +114,12 @@ def mainPage() {
                 if (status == "unauthorized") paragraph "<span style='color:#b00'>The bridge no longer accepts Hue Connect's key. Press Link again.</span>"
                 input "btnRelink", "button", title: "Link again"
             }
+            if (state.missingDrivers) {
+                section("Drivers to install") {
+                    paragraph "<span style='color:#b00'>Not added, because these drivers aren't installed: <b>${((state.missingDrivers ?: []) as List).join(', ')}</b>.</span> " +
+                        "Open Hubitat Package Manager, choose Modify for Hue Connect, tick them under the optional drivers, then press Done here again."
+                }
+            }
             section("Lights") {
                 Map lights = (res().lights ?: [:]) as Map
                 if (lights) {
@@ -145,6 +151,7 @@ def mainPage() {
                 }
             }
             section("Options") {
+                input "syncNames", "bool", title: "Rename devices when they are renamed in the Hue app", defaultValue: true
                 input "logEnable", "bool", title: "Debug logging", defaultValue: false
             }
         }
@@ -367,7 +374,7 @@ void applyResources(List items) {
     items.findAll { it.type in ["scene", "smart_scene"] }.each { sc ->
         String roomRid = sc.group?.rid
         scenes[sc.id] = [name: (sc.metadata?.name ?: "Scene") as String, smart: sc.type == "smart_scene", groupedLight: groupOf[roomRid],
-                         room: (owners[roomRid]?.metadata?.name ?: "") as String, dynamic: sc.palette?.color ? true : false]
+                         room: (owners[roomRid]?.metadata?.name ?: "") as String, roomRid: roomRid, dynamic: sc.palette?.color ? true : false]
     }
     Map services = items.findAll { it.type in SENSOR_SERVICES }.collectEntries { [(it.id): it] }
     Map sensors = [:]
@@ -443,10 +450,14 @@ static List effectListEvents(String groupedLightRid, Map scenes) {
     return [[name: "lightEffects", value: groovy.json.JsonOutput.toJson(numbered)]]
 }
 
-/** What doesn't change about a light: name, kind (which driver), colour gamut and CT range. */
+/**
+ * What doesn't change about a light: name, kind (which driver), colour gamut and CT range. The name is the device's: Hue marks
+ * the light's own name deprecated ("use metadata on device level") and a rename goes to the device. They differ on real
+ * bridges (13 of 61 lights on the one Hue Connect was tested with), and the Hue app shows the device's.
+ */
 static Map lightInfo(Map l, Map device) {
     String kind = l.color ? "color" : l.color_temperature ? "ct" : l.dimming ? "dim" : "onoff"
-    Map info = [name: (l.metadata?.name ?: device?.metadata?.name ?: "Hue light") as String, kind: kind, device: l.owner?.rid] +
+    Map info = [name: (device?.metadata?.name ?: l.metadata?.name ?: "Hue light") as String, kind: kind, device: l.owner?.rid] +
                productData(device)
     // Effects, timed effects and signals as this light reports them (Hue: never assume from the model)
     List fx = ((l.effects_v2?.action?.effect_values ?: l.effects?.effect_values ?: []) as List) - "no_effect"
@@ -492,20 +503,89 @@ private boolean syncDevices() {
     Map sensors = (res().sensors ?: [:]) as Map
     ((settings.selectedSensors ?: []) as List).each { String rid -> if (sensors[rid]) wanted[rid] = [SENSOR_DRIVERS[sensors[rid].kind], sensors[rid].name] }
     boolean added = false
+    Set missing = [] as Set   // drivers the user didn't install (HPM lists most of them as optional)
     wanted.each { String rid, List d ->
         if (!getChildDevice(dni(rid))) {
-            def cd = addChildDevice("hue", d[0], dni(rid), [name: d[0], label: d[1], isComponent: false])
+            def cd
+            try {
+                cd = addChildDevice("hue", d[0], dni(rid), [name: d[0], label: d[1], isComponent: false])
+            } catch (Exception e) {
+                if (!isMissingDriver(e)) throw e
+                missing << d[0]
+                return
+            }
             if (d[0] == DRIVER_GROUP) cd.parse(effectListEvents(rid, scenes))
             if (lights[rid]?.effects) cd.parse(lightEffectEvents(lights[rid] as Map))
             if (d[0] == SENSOR_DRIVERS.button) cd.parse([[name: "numberOfButtons", value: sensors[rid].numberOfButtons]])
             added = true
         }
     }
+    if (missing) {
+        state.missingDrivers = missing.sort()
+        log.warn "Hue Connect: not added, because these drivers aren't installed: ${missing.sort().join(', ')}. Install them with Hubitat Package Manager (Modify, then pick the optional drivers) and press Done again."
+    } else {
+        state.remove("missingDrivers")
+    }
     getChildDevices().findAll { ridOf(it.deviceNetworkId as String) && !wanted.containsKey(ridOf(it.deviceNetworkId as String)) }.each {
         deleteChildDevice(it.deviceNetworkId)
     }
     return added
 }
+
+/**
+ * A name changed on the bridge (in the Hue app): update what the app remembers and relabel the Hubitat device. Only a
+ * change relabels, so a label set in Hubitat stays until the same thing is renamed in Hue. Optional: "Rename devices ...".
+ */
+private void applyRenames(Map item) {
+    if (settings.syncNames == false) return
+    Map r = res()
+    List changes = renamed(item, r)
+    changes.each { Map c ->
+        Map info = (r[c.section] as Map)[c.rid] as Map
+        info.putAll(c.set as Map)
+        def cd = getChildDevice(dni(c.rid as String))
+        String label = c.section == "scenes" ? sceneLabel(info) : info.name
+        if (cd && cd.label != label) {
+            log.info "Hue Connect: ${cd.label} is now ${label}"
+            cd.setLabel(label)
+        }
+        if (c.section == "scenes" && c.set.containsKey("name") && info.groupedLight) {   // a room's effects are its scenes' names
+            getChildDevice(dni(info.groupedLight as String))?.parse(effectListEvents(info.groupedLight as String, r.scenes as Map))
+        }
+    }
+}
+
+/**
+ * What a rename on the bridge changes in the app's maps: [[section: lights|groups|scenes|sensors, rid:, set: [...]]].
+ * A light is named by its device (the light's own name is deprecated), so only a device rename relabels it. A room or
+ * zone name is its group's name and part of its scenes' labels. Names that already match give nothing (the full read at start sends every name).
+ */
+static List renamed(Map item, Map res) {
+    String name = item.metadata?.name as String
+    if (!name) return []
+    List out = []
+    Map lights = (res.lights ?: [:]) as Map, groups = (res.groups ?: [:]) as Map
+    Map scenes = (res.scenes ?: [:]) as Map, sensors = (res.sensors ?: [:]) as Map
+    switch (item.type) {
+        case "device":
+            lights.each { rid, l -> if (l.device == item.id && l.name != name) out << [section: "lights", rid: rid, set: [name: name]] }
+            if (sensors[item.id] && sensors[item.id].name != name) out << [section: "sensors", rid: item.id, set: [name: name]]
+            break
+        case "room":
+        case "zone":
+            groups.each { rid, g -> if (g.owner == item.id && g.name != name) out << [section: "groups", rid: rid, set: [name: name]] }
+            scenes.each { rid, s -> if (s.roomRid == item.id && s.room != name) out << [section: "scenes", rid: rid, set: [room: name]] }
+            break
+        case "scene":
+        case "smart_scene":
+            if (scenes[item.id] && scenes[item.id].name != name) out << [section: "scenes", rid: item.id, set: [name: name]]
+            break
+    }
+    return out
+}
+
+/** True for what Hubitat throws when a driver isn't installed (UnknownDeviceTypeException: "Device type ... not found"). */
+static boolean isMissingDriver(Exception e) { e.class.simpleName == "UnknownDeviceTypeException" || (e.message ?: "").contains("not found") }
 
 /** The Hue resource id in one of this bridge's device network ids, or null (e.g. the bridge device itself). */
 private String ridOf(String deviceNetworkId) {
@@ -523,6 +603,7 @@ void hueEvents(String type, List items) {
         return
     }
     items.each { Map item ->
+        if (item.metadata?.name) applyRenames(item)
         switch (item.type) {
             case "light":
                 def d = getChildDevice(dni(item.id as String))

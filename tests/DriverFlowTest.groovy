@@ -892,4 +892,65 @@ check("scene speed: a dynamic scene shows and sets its palette speed; others ref
     assert puts(b).size() == sent, "a static scene and a smart scene have no speed to set"
 }
 
+// ---------------------------------------------------------------- renames and drivers that aren't installed
+
+void rename(HubitatScript app, FakeDevice b, int n, Map item) {
+    b.parse(sse("7${n}:0", [[type: "update", data: [item]]]))
+    app.hub.settle()
+}
+
+check("renames: a name changed in the Hue app relabels the device, a room's group and scenes, and the group's effect list") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    app.settings.selectedSensors = [rid(11)]
+    app.updated(); app.refreshAllDone(resp(200, fixture), [:]); hub.settle()
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    assert lightOf(app, 101).label == "Living Lamp" && deviceOf(app, 11).label == "Hall Motion"
+    b.parse(sse("70:0", [[type: "update", data: [[id: rid(1), type: "device", metadata: [name: "Reading Lamp"]]]]])); hub.settle()
+    assert lightOf(app, 101).label == "Reading Lamp" && app.res().lights[rid(101)].name == "Reading Lamp"
+    b.parse(sse("71:0", [[type: "update", data: [[id: rid(102), type: "light", metadata: [name: "Stale", archetype: "ceiling_round"]]]]])); hub.settle()
+    assert lightOf(app, 102).label == "Hall Ceiling", "a light's own name is deprecated; only its device's name counts"
+    b.parse(sse("75:0", [[type: "update", data: [[id: rid(2), type: "device", metadata: [name: "Hall Light"]]]]])); hub.settle()
+    assert lightOf(app, 102).label == "Hall Light"
+    b.parse(sse("72:0", [[type: "update", data: [[id: rid(301), type: "room", metadata: [name: "Lounge"]]]]])); hub.settle()
+    assert deviceOf(app, 401).label == "Lounge" && deviceOf(app, 501).label == "Relax (Lounge)" && deviceOf(app, 504).label == "Fireplace (Lounge)"
+    assert deviceOf(app, 503).label == "Nightlight (Hall)", "another room's scenes keep their label"
+    b.parse(sse("73:0", [[type: "update", data: [[id: rid(501), type: "scene", metadata: [name: "Unwind"]]]]])); hub.settle()
+    assert deviceOf(app, 501).label == "Unwind (Lounge)"
+    assert deviceOf(app, 401).current.lightEffects.contains("Unwind") && !deviceOf(app, 401).current.lightEffects.contains("Relax")
+    b.parse(sse("74:0", [[type: "update", data: [[id: rid(11), type: "device", metadata: [name: "Hallway Motion"]]]]])); hub.settle()
+    assert deviceOf(app, 11).label == "Hallway Motion"
+}
+
+check("renames: a label set in Hubitat stays until Hue renames that device; the option turns it off") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    lightOf(app, 103).label = "Front Porch"
+    b.parse(sse("80:0", [[type: "update", data: [[id: rid(3), type: "device", metadata: [name: "Porch"]], [id: rid(103), type: "light", on: [on: true]]]]])); hub.settle()
+    assert lightOf(app, 103).label == "Front Porch", "Hue's name didn't change"
+    app.settings.syncNames = false
+    b.parse(sse("81:0", [[type: "update", data: [[id: rid(3), type: "device", metadata: [name: "Porch Light"]]]]])); hub.settle()
+    assert lightOf(app, 103).label == "Front Porch" && app.res().lights[rid(103)].name == "Porch"
+    app.settings.syncNames = true
+    b.parse(sse("82:0", [[type: "update", data: [[id: rid(3), type: "device", metadata: [name: "Porch Light"]]]]])); hub.settle()
+    assert lightOf(app, 103).label == "Porch Light"
+}
+
+check("missing drivers: devices whose driver isn't installed are skipped with a notice, the rest are added, and Done again adds them") {
+    Hub hub = new Hub(root)
+    hub.missingDrivers << "Hue Plug" << "Hue Scene"
+    HubitatScript app = linkedAll(hub)
+    assert lightOf(app, 101) && lightOf(app, 104) == null, "the plug driver is missing, the other lights are added"
+    assert deviceOf(app, 401) && deviceOf(app, 501) == null && deviceOf(app, 601) == null
+    assert app.state.missingDrivers == ["Hue Plug", "Hue Scene"]
+    assert app.log.at("warn").any { it.contains("Hue Plug, Hue Scene") && it.contains("Package Manager") }
+    hub.missingDrivers.clear()
+    app.updated(); hub.settle()
+    assert lightOf(app, 104) && deviceOf(app, 501) && deviceOf(app, 601)
+    assert !app.state.containsKey("missingDrivers")
+}
+
 Check.finish()

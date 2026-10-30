@@ -31,42 +31,42 @@
       "name": "Hue Color Light",
       "namespace": "hue",
       "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-color-light.groovy",
-      "required": true
+      "required": false
     },
     {
       "id": "1fd9474d-7905-419b-8603-86b3ea976e97",
       "name": "Hue White Ambiance Light",
       "namespace": "hue",
       "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-white-ambiance-light.groovy",
-      "required": true
+      "required": false
     },
     {
       "id": "20e59f63-8b2e-42c2-a6bb-7a589cc23a86",
       "name": "Hue White Light",
       "namespace": "hue",
       "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-white-light.groovy",
-      "required": true
+      "required": false
     },
     {
       "id": "3a2bc88e-118c-454b-ab1b-53ab8593174a",
       "name": "Hue Plug",
       "namespace": "hue",
       "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-plug.groovy",
-      "required": true
+      "required": false
     },
     {
       "id": "8429f14d-971f-4ad3-9d4b-05931b0fd77f",
       "name": "Hue Group",
       "namespace": "hue",
       "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-group.groovy",
-      "required": true
+      "required": false
     },
     {
       "id": "a0c4cfe8-8090-4d94-8d1e-2fb085e7257e",
       "name": "Hue Scene",
       "namespace": "hue",
       "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-hue/main/drivers/hue-scene.groovy",
-      "required": true
+      "required": false
     },
     {
       "id": "1066e520-577d-4235-8f1b-79e718b4b25e",

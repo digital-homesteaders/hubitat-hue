@@ -111,6 +111,16 @@ check("lights: commands stay inside what each light reports, with on only for a 
     }
 }
 
+check("names: a light is named by its device, as Hue says (13 real lights carry another name of their own), and a device rename is found") {
+    assert lights.count { it.metadata.name != deviceOf(it).metadata.name } == 13, "the dump has lights whose own name is not their device's"
+    lights.each { Map l ->
+        assert infoOf(l).name == deviceOf(l).metadata.name, "${l.metadata.name} vs ${deviceOf(l).metadata.name}"
+        Map res = [lights: [(l.id): infoOf(l)]]
+        assert app.renamed([type: "device", id: l.owner.rid, metadata: [name: "Renamed"]], res) == [[section: "lights", rid: l.id, set: [name: "Renamed"]]], l.metadata.name
+        assert app.renamed([type: "device", id: l.owner.rid, metadata: [name: deviceOf(l).metadata.name]], res) == [], l.metadata.name
+    }
+}
+
 check("power-up: every real light offers it, reports a preset the driver can show, and can be set to each behaviour") {
     Map shown = [:]
     lights.each { Map l ->
