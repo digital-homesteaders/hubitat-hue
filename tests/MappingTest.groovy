@@ -320,4 +320,20 @@ check("missing drivers: only Hubitat's own 'not found' is taken as a driver that
     assert !app.isMissingDriver(new IllegalArgumentException("duplicate dni x")) && !app.isMissingDriver(new RuntimeException())
 }
 
+check("colour temperature ramp: warmer is more mirek, over the light's own range, only for lights with colour temperature") {
+    Map ct = [kind: "ct", mirekMin: 153, mirekMax: 500]
+    assert app.lightCommand("startColorTemperatureChange", ["warmer"], ct, [switch: "on"], 400) ==
+        [color_temperature_delta: [action: "up", mirek_delta: 347], dynamics: [duration: 4000]]
+    assert app.lightCommand("startColorTemperatureChange", ["cooler"], ct, [switch: "off"], 400).color_temperature_delta.action == "down"
+    assert app.lightCommand("startColorTemperatureChange", ["warmer"], [kind: "color", mirekMin: 200, mirekMax: 454], [:], null).color_temperature_delta.mirek_delta == 254
+    assert app.lightCommand("startColorTemperatureChange", ["warmer"], [kind: "ct", mirekMin: 50, mirekMax: 1000], [:], null).color_temperature_delta.mirek_delta == 950, "Hue's limit"
+    assert app.lightCommand("startColorTemperatureChange", ["warmer"], [kind: "ct"], [:], null).color_temperature_delta.mirek_delta == 347, "no schema: Hue's usual range"
+    assert app.lightCommand("stopColorTemperatureChange", [], ct, [:], 400) == [color_temperature_delta: [action: "stop"]]
+    ["dim", "onoff"].each { String kind ->
+        assert app.lightCommand("startColorTemperatureChange", ["warmer"], [kind: kind], [:], null) == null, kind
+        assert app.lightCommand("stopColorTemperatureChange", [], [kind: kind], [:], null) == null, kind
+    }
+    assert app.lightCommand("startColorTemperatureChange", ["up"], ct, [:], null) == null && app.lightCommand("startColorTemperatureChange", [null], ct, [:], null) == null
+}
+
 Check.finish()

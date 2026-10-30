@@ -121,6 +121,21 @@ check("names: a light is named by its device, as Hue says (13 real lights carry 
     }
 }
 
+check("colour temperature ramp: every real light with colour temperature ramps its own range, others refuse") {
+    lights.each { Map l ->
+        Map info = infoOf(l)
+        Map up = app.lightCommand("startColorTemperatureChange", ["warmer"], info, [switch: "on"], 400)
+        Map stop = app.lightCommand("stopColorTemperatureChange", [], info, [switch: "on"], 400)
+        if (l.color_temperature) {
+            assert up.color_temperature_delta.mirek_delta == info.mirekMax - info.mirekMin && up.color_temperature_delta.action == "up", l.metadata.name
+            assert stop == [color_temperature_delta: [action: "stop"]], l.metadata.name
+        } else {
+            assert up == null && stop == null, l.metadata.name
+        }
+    }
+    assert lights.count { it.color_temperature } == 48
+}
+
 check("power-up: every real light offers it, reports a preset the driver can show, and can be set to each behaviour") {
     Map shown = [:]
     lights.each { Map l ->

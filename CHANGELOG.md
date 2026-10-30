@@ -27,6 +27,10 @@
   specifies (the light's own name is deprecated); on one real bridge 13 of 61
   lights had a different, stale name there. Existing devices keep their label
   until their device is renamed in Hue, or they are removed and added again.
+- **Colour temperature ramp:** colour and white ambiance lights and groups get
+  Start Color Temperature Change (warmer or cooler) and Stop Color Temperature
+  Change, using Hue's colour temperature delta over the light's own range, so a
+  held button ramps and releasing stops it partway.
 - **Power-up behaviour:** every light and plug shows `powerUp` (previous,
   lastOnState, safety, off or custom) and **Set Power Up** changes it, so a
   light can stay off after an outage. It sends only the preset, and only to

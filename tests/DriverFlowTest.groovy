@@ -953,4 +953,33 @@ check("missing drivers: devices whose driver isn't installed are skipped with a 
     assert !app.state.containsKey("missingDrivers")
 }
 
+// ---------------------------------------------------------------- colour temperature ramp
+
+check("colour temperature ramp: one PUT for a light and for a group; a newer ramp or set replaces a waiting one") {
+    Hub hub = new Hub(root)
+    HubitatScript app = linkedAll(hub)
+    FakeDevice b = bridgeOf(app)
+    started(hub, b)
+    Map info = app.res().lights[rid(102)] as Map
+    int range = (info.mirekMax as int) - (info.mirekMin as int)
+    lightOf(app, 102).startColorTemperatureChange("warmer")
+    assert puts(b).last()[2].path == "/clip/v2/resource/light/${rid(102)}"
+    assert puts(b).last()[2].body == [color_temperature_delta: [action: "up", mirek_delta: range], dynamics: [duration: 4000]], "no on: a ramp doesn't turn a light on"
+    lightOf(app, 102).setColorTemperature(3000)                // waits for the pacing
+    lightOf(app, 102).startColorTemperatureChange("cooler")    // replaces the waiting set
+    lightOf(app, 102).stopColorTemperatureChange()             // replaces the waiting ramp
+    ack(b)
+    hub.advance(1000); b.pump()
+    Map body = puts(b).last()[2].body
+    assert body.color_temperature_delta == [action: "stop"] && !body.containsKey("color_temperature"), "${body}"
+    ack(b)
+    hub.advance(1000); lightOf(app, 102).setColorTemperature(3000); lightOf(app, 102).setColorTemperature(2700); b.pump()
+    ack(b)
+    hub.advance(1000); b.pump()
+    int before = puts(b).size()
+    deviceOf(app, 401).startColorTemperatureChange("cooler")
+    assert puts(b).size() == before + 1 && puts(b).last()[2].path == "/clip/v2/resource/grouped_light/${rid(401)}"
+    assert puts(b).last()[2].body == [color_temperature_delta: [action: "down", mirek_delta: 347], dynamics: [duration: 4000]]
+}
+
 Check.finish()

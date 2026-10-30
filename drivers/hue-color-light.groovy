@@ -35,6 +35,8 @@ metadata {
         attribute "powerUp", "enum", ["previous", "lastOnState", "safety", "off", "custom"]
         command "setPowerUp", [[name: "Behavior*", type: "ENUM", constraints: ["previous", "lastOnState", "safety", "off"],
                                 description: "What the light does when power returns"]]
+        command "startColorTemperatureChange", [[name: "Direction*", type: "ENUM", constraints: ["warmer", "cooler"]]]
+        command "stopColorTemperatureChange"
         attribute "healthStatus", "enum", ["online", "offline"]
     }
     preferences {
@@ -84,3 +86,6 @@ void setPreviousEffect() { toHue("setPreviousEffect") }
 void startTimedEffect(String effect, minutes = 30) { toHue("startTimedEffect", [effect, minutes]) }
 /** What this light does when power returns: previous state, last on state, safety (warm white) or off. */
 void setPowerUp(String behavior) { toHue("setPowerUp", [behavior]) }
+/** Ramp the colour temperature warmer or cooler until stopColorTemperatureChange (or the light's limit). */
+void startColorTemperatureChange(String direction) { toHue("startColorTemperatureChange", [direction]) }
+void stopColorTemperatureChange() { toHue("stopColorTemperatureChange") }

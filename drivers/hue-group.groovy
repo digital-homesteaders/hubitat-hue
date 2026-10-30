@@ -27,6 +27,8 @@ metadata {
         capability "ColorControl"
         capability "LightEffects"
         capability "Refresh"
+        command "startColorTemperatureChange", [[name: "Direction*", type: "ENUM", constraints: ["warmer", "cooler"]]]
+        command "stopColorTemperatureChange"
     }
     preferences {
         input "transitionTime", "enum", title: "Transition time", defaultValue: "400",
@@ -66,3 +68,6 @@ void setSaturation(saturation) { toHue("setSaturation", [saturation]) }
 void setEffect(effectNumber) { toHue("setEffect", [effectNumber]) }
 void setNextEffect() { toHue("setNextEffect") }
 void setPreviousEffect() { toHue("setPreviousEffect") }
+/** Ramp the colour temperature warmer or cooler until stopColorTemperatureChange (or the light's limit). */
+void startColorTemperatureChange(String direction) { toHue("startColorTemperatureChange", [direction]) }
+void stopColorTemperatureChange() { toHue("stopColorTemperatureChange") }

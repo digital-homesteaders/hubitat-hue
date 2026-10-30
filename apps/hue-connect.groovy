@@ -976,6 +976,13 @@ static Map lightCommand(String command, List args, Map info, Map current, Intege
             return [dimming_delta: [action: args[0] == "down" ? "down" : "up", brightness_delta: 100], dynamics: [duration: LEVEL_CHANGE_MS]]
         case "stopLevelChange":
             return [dimming_delta: [action: "stop"]]
+        case "startColorTemperatureChange":
+            // Warmer is more mirek. The whole range over LEVEL_CHANGE_MS (Hue clips at the light's limits), so stopping on release stops it partway
+            if (!(info.kind in ["ct", "color"]) || !(args[0] in ["warmer", "cooler"])) return null
+            int range = Math.min(950, Math.max(1, ((info.mirekMax ?: 500) as int) - ((info.mirekMin ?: 153) as int)))
+            return [color_temperature_delta: [action: args[0] == "cooler" ? "down" : "up", mirek_delta: range], dynamics: [duration: LEVEL_CHANGE_MS]]
+        case "stopColorTemperatureChange":
+            return info.kind in ["ct", "color"] ? [color_temperature_delta: [action: "stop"]] : null
         default:
             return null
     }

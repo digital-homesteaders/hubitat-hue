@@ -16,7 +16,9 @@ Hue Connect listens to the bridge's live event stream instead of polling it.
   **Identify**, and sunrise/sunset over up to 6 hours (**Start Timed Effect**).
   `hueMode` shows `streaming` while an Entertainment app drives the light.
   `powerUp` shows what the light does when power returns, and **Set Power Up**
-  changes it (previous state, last on state, safety or off).
+  changes it (previous state, last on state, safety or off). Lights and groups
+  with colour temperature also ramp it: **Start Color Temperature Change**
+  (warmer or cooler) until **Stop Color Temperature Change**, like hold-to-dim.
   Model, product name and firmware are in each device's data.
 - **Rooms and zones:** a Hue Group device per room or zone (and one for all
   lights) changes every light together in one command, the way the Hue app
